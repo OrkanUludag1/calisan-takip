@@ -538,94 +538,98 @@ class TimeTrackingForm(QWidget):
         self.save_timer.start()
     
     def load_week_days(self):
+        """Haftalık günleri yükler"""
         if not self.current_employee_id:
             return
             
-        start_of_week = self.current_date
+        # Tarihleri ayarla
+        current_date = QDate.currentDate()
+        start_of_week = current_date.addDays(-current_date.dayOfWeek() + 1)
         
-        # Varsayılan saatler - Tüm günler için aynı
-        default_times = {
-            'entry': QTime(8, 15),      # 08:15
-            'lunch_start': QTime(13, 15), # 13:15
-            'lunch_end': QTime(13, 45),   # 13:45
-            'exit': QTime(18, 45)       # 18:45
-        }
-        
-        for i in range(7):
-            current_date = start_of_week.addDays(i)
-            date_str = current_date.toString("yyyy-MM-dd")
-            is_weekend = current_date.dayOfWeek() in [6, 7]  # 6=Cumartesi, 7=Pazar
+        # Günleri tabloya ekle
+        for row in range(7):
+            current_day = start_of_week.addDays(row)
             
-            # Aktif/Pasif checkbox
+            # Durum (checkbox) hücresi
             status_widget = QWidget()
             status_layout = QHBoxLayout(status_widget)
             status_layout.setContentsMargins(0, 0, 0, 0)
             status_layout.setAlignment(Qt.AlignCenter)
             
             checkbox = QCheckBox()
-            checkbox.setChecked(not is_weekend)  # Hafta içi günler varsayılan olarak aktif
-            checkbox.stateChanged.connect(lambda state, row=i: self.on_day_status_changed(row, state))
+            checkbox.setChecked(False)  # Varsayılan olarak pasif
+            
+            # Checkbox signal bağlantısı
+            checkbox.stateChanged.connect(lambda state, row=row: self.on_day_status_changed(row, state))
+            
             status_layout.addWidget(checkbox)
+            self.days_table.setCellWidget(row, 0, status_widget)
             
-            self.days_table.setCellWidget(i, 0, status_widget)
+            # Tarih hücresi
+            date_item = QTableWidgetItem(current_day.toString("dd.MM.yyyy"))
+            date_item.setData(Qt.UserRole, current_day)  # Tarihi UserRole'de sakla
+            self.days_table.setItem(row, 1, date_item)
             
-            # Tarih sütunu
-            date_item = QTableWidgetItem(current_date.toString("dd.MM.yyyy ddd"))
-            date_item.setData(Qt.UserRole, date_str)
-            date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable)
-            self.days_table.setItem(i, 1, date_item)
+            # Saat hücreleri için TimeEdit'ler
+            for col in range(2, 6):
+                time_widget = QTimeEdit()
+                time_widget.setDisplayFormat("HH:mm")
+                time_widget.setEnabled(False)  # Başlangıçta pasif
+                
+                # Varsayılan saatleri ayarla
+                if col == 2:  # Giriş
+                    time_widget.setTime(QTime(8, 0))
+                elif col == 3:  # Öğle başlangıç
+                    time_widget.setTime(QTime(12, 0))
+                elif col == 4:  # Öğle bitiş
+                    time_widget.setTime(QTime(13, 0))
+                elif col == 5:  # Çıkış
+                    time_widget.setTime(QTime(18, 0))
+                
+                # TimeEdit değişiklik sinyali
+                time_widget.timeChanged.connect(lambda time, row=row: self.on_time_changed(row))
+                
+                self.days_table.setCellWidget(row, col, time_widget)
             
-            # Giriş saati
-            entry_edit = QTimeEdit()
-            entry_edit.setDisplayFormat("HH:mm")
-            entry_edit.setTime(default_times['entry'])
-            entry_edit.timeChanged.connect(lambda time, row=i: self.on_time_changed(row))
-            self.days_table.setCellWidget(i, 2, entry_edit)
-            
-            # Öğle başlangıç
-            lunch_start = QTimeEdit()
-            lunch_start.setDisplayFormat("HH:mm")
-            lunch_start.setTime(default_times['lunch_start'])
-            lunch_start.timeChanged.connect(lambda time, row=i: self.on_time_changed(row))
-            self.days_table.setCellWidget(i, 3, lunch_start)
-            
-            # Öğle bitiş
-            lunch_end = QTimeEdit()
-            lunch_end.setDisplayFormat("HH:mm")
-            lunch_end.setTime(default_times['lunch_end'])
-            lunch_end.timeChanged.connect(lambda time, row=i: self.on_time_changed(row))
-            self.days_table.setCellWidget(i, 4, lunch_end)
-            
-            # Çıkış saati
-            exit_edit = QTimeEdit()
-            exit_edit.setDisplayFormat("HH:mm")
-            exit_edit.setTime(default_times['exit'])
-            exit_edit.timeChanged.connect(lambda time, row=i: self.on_time_changed(row))
-            self.days_table.setCellWidget(i, 5, exit_edit)
-            
-            # Toplam sütunu
-            total_item = QTableWidgetItem("10:00")
-            total_item.setFlags(total_item.flags() & ~Qt.ItemIsEditable)
+            # Toplam süre hücresi
+            total_item = QTableWidgetItem("--:--")
             total_item.setTextAlignment(Qt.AlignCenter)
-            self.days_table.setItem(i, 6, total_item)
-            
-            # Hafta sonu ise satırı devre dışı bırak
-            if is_weekend:
-                for col in range(2, 7):
-                    widget = self.days_table.cellWidget(i, col)
-                    if isinstance(widget, QTimeEdit):
-                        widget.setEnabled(False)
-                        widget.setStyleSheet("background-color: #f0f0f0;")
-                    elif isinstance(widget, QTableWidgetItem):
-                        widget.setBackground(QColor("#f0f0f0"))
-                date_item.setBackground(QColor("#f0f0f0"))
-                checkbox.setEnabled(False)  # Hafta sonu günleri için checkbox'ı devre dışı bırak
-            
-            # İlk yüklemede aktif/pasif durumuna göre alanları ayarla
-            self.on_day_status_changed(i, Qt.Checked if checkbox.isChecked() else Qt.Unchecked)
-            
-        self.calculate_total_hours()
+            self.days_table.setItem(row, 6, total_item)
         
+        # Veritabanından kayıtlı günleri yükle
+        cursor = self.db.conn.cursor()
+        cursor.execute('''
+            SELECT date, entry_time, lunch_start, lunch_end, exit_time 
+            FROM work_records 
+            WHERE employee_id = ?
+        ''', (self.current_employee_id,))
+        
+        records = cursor.fetchall()
+        for record in records:
+            date = QDate.fromString(record[0], "yyyy-MM-dd")
+            
+            # Tarihi bul ve aktif et
+            for row in range(7):
+                date_item = self.days_table.item(row, 1)
+                if date_item and date_item.data(Qt.UserRole).toString("yyyy-MM-dd") == date.toString("yyyy-MM-dd"):
+                    # Checkbox'ı işaretle
+                    status_widget = self.days_table.cellWidget(row, 0)
+                    if status_widget:
+                        checkbox = status_widget.findChild(QCheckBox)
+                        if checkbox:
+                            checkbox.setChecked(True)
+                    
+                    # Saatleri ayarla
+                    for col, time_str in enumerate(record[1:], start=2):
+                        time_widget = self.days_table.cellWidget(row, col)
+                        if time_widget:
+                            time = QTime.fromString(time_str, "HH:mm")
+                            time_widget.setTime(time)
+                    break
+        
+        # Değişiklikten sonra toplamları güncelle
+        self.calculate_total_hours()
+
     def on_time_changed(self, row):
         """Saat değiştiğinde çağrılır"""
         self.save_day_data(row)
@@ -648,7 +652,7 @@ class TimeTrackingForm(QWidget):
         if not date_item:
             return
             
-        date = date_item.data(Qt.UserRole)
+        date = date_item.data(Qt.UserRole).toString("yyyy-MM-dd")
         
         # Saat verilerini al
         entry_time = self.days_table.cellWidget(row, 2).time().toString("HH:mm")
@@ -778,7 +782,7 @@ class TimeTrackingForm(QWidget):
                     cursor.execute('''
                         DELETE FROM work_records 
                         WHERE employee_id = ? AND date = ?
-                    ''', (self.current_employee_id, self.days_table.item(row, 1).data(Qt.UserRole)))
+                    ''', (self.current_employee_id, self.days_table.item(row, 1).data(Qt.UserRole).toString("yyyy-MM-dd")))
                     self.db.conn.commit()
             else:
                 # Varsayılan değerleri ayarla
