@@ -9,6 +9,7 @@ class EmployeeDB:
         """Veritabanı bağlantısını başlatır"""
         self.db_file = db_file
         self.conn = sqlite3.connect(self.db_file)
+        self.conn.row_factory = sqlite3.Row
         self.create_tables()
     
     def create_tables(self):
@@ -46,9 +47,18 @@ class EmployeeDB:
             lunch_end TEXT,
             exit_time TEXT,
             is_active INTEGER DEFAULT 1,
+            day_active INTEGER DEFAULT 1,
             FOREIGN KEY (employee_id) REFERENCES employees (id)
         )
         ''')
+        
+        # Mevcut work_hours tablosuna day_active sütunu ekle
+        try:
+            cursor.execute('SELECT day_active FROM work_hours LIMIT 1')
+        except sqlite3.OperationalError:
+            cursor.execute('ALTER TABLE work_hours ADD COLUMN day_active INTEGER DEFAULT 1')
+            cursor.execute('UPDATE work_hours SET day_active = 1')
+            self.conn.commit()
         
         self.conn.commit()
     
@@ -171,6 +181,54 @@ class EmployeeDB:
         
         self.conn.commit()
     
+    def update_work_hours(self, employee_id, date, time_type, time_value):
+        """Belirli bir zaman türünü günceller (giriş, çıkış, öğle başlangıç/bitiş)"""
+        cursor = self.conn.cursor()
+        
+        # time_type değerini veritabanı sütun adına dönüştür
+        db_column = time_type
+        if time_type == "entry":
+            db_column = "entry_time"
+        elif time_type == "exit":
+            db_column = "exit_time"
+        
+        # Önce bu tarih için kayıt var mı kontrol et
+        cursor.execute('''
+        SELECT id FROM work_hours 
+        WHERE employee_id = ? AND date = ?
+        ''', (employee_id, date))
+        
+        record = cursor.fetchone()
+        
+        if record:
+            # Kayıt varsa güncelle
+            cursor.execute(f'''
+            UPDATE work_hours
+            SET {db_column} = ?
+            WHERE employee_id = ? AND date = ?
+            ''', (time_value, employee_id, date))
+        else:
+            # Kayıt yoksa yeni ekle
+            # Diğer varsayılan değerleri belirleyelim
+            entry_time = lunch_start = lunch_end = exit_time = "00:00"
+            
+            # Güncellenen alanı ayarla
+            if time_type == "entry":
+                entry_time = time_value
+            elif time_type == "lunch_start":
+                lunch_start = time_value
+            elif time_type == "lunch_end":
+                lunch_end = time_value
+            elif time_type == "exit":
+                exit_time = time_value
+                
+            cursor.execute('''
+            INSERT INTO work_hours (employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
+            ''', (employee_id, date, entry_time, lunch_start, lunch_end, exit_time))
+        
+        self.conn.commit()
+    
     def get_work_hours(self, employee_id, date):
         """Belirli bir tarih için çalışma saatlerini getirir"""
         cursor = self.conn.cursor()
@@ -192,13 +250,95 @@ class EmployeeDB:
         week_start = datetime.strptime(week_start_date, "%Y-%m-%d")
         week_end = week_start + timedelta(days=6)
         
+        # Önce day_active sütununu kontrol et
+        try:
+            cursor.execute('SELECT day_active FROM work_hours LIMIT 1')
+        except sqlite3.OperationalError:
+            # Sütun yoksa ekle
+            cursor.execute('ALTER TABLE work_hours ADD COLUMN day_active INTEGER DEFAULT 1')
+            cursor.execute('UPDATE work_hours SET day_active = 1')
+            self.conn.commit()
+        
         cursor.execute('''
-        SELECT date, entry_time, lunch_start, lunch_end, exit_time, is_active
+        SELECT id, date, entry_time, lunch_start, lunch_end, exit_time, is_active, day_active
         FROM work_hours
         WHERE employee_id = ? AND date BETWEEN ? AND ?
         ORDER BY date
         ''', (employee_id, week_start.strftime("%Y-%m-%d"), week_end.strftime("%Y-%m-%d")))
         
-        records = cursor.fetchall()
+        rows = cursor.fetchall()
+        records = []
+        
+        # Her satırı sözlüğe dönüştür
+        for row in rows:
+            record = {
+                'id': row[0],
+                'date': row[1],
+                'entry_time': row[2],
+                'lunch_start': row[3],
+                'lunch_end': row[4],
+                'exit_time': row[5],
+                'is_active': row[6],
+                'day_active': row[7] if row[7] is not None else 1
+            }
+            records.append(record)
         
         return records
+
+    def update_day_active_status(self, work_hour_id, active_status):
+        """Çalışma günü aktif/pasif durumunu günceller"""
+        cursor = self.conn.cursor()
+        
+        cursor.execute('''
+        UPDATE work_hours
+        SET day_active = ?
+        WHERE id = ?
+        ''', (1 if active_status else 0, work_hour_id))
+        
+        self.conn.commit()
+        
+        return cursor.rowcount > 0
+
+    def toggle_employee_active(self, employee_id, active_status):
+        """Çalışanın aktif/pasif durumunu değiştirir"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(
+                'UPDATE employees SET is_active = ? WHERE id = ?',
+                (1 if active_status else 0, employee_id)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Çalışan durumu güncellenirken hata: {e}")
+            return False
+
+    def has_work_hours(self, employee_id, date):
+        """Belirli bir tarih için çalışma saati kaydı var mı kontrol eder"""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            'SELECT id FROM work_hours WHERE employee_id = ? AND date = ?',
+            (employee_id, date)
+        )
+        return cursor.fetchone() is not None
+
+    def add_work_hours(self, employee_id, date, entry_time, lunch_start, lunch_end, exit_time):
+        """Yeni çalışma saati kaydı oluşturur"""
+        cursor = self.conn.cursor()
+        
+        # Önce day_active sütununu kontrol et
+        try:
+            cursor.execute('SELECT day_active FROM work_hours LIMIT 1')
+        except sqlite3.OperationalError:
+            # Sütun yoksa ekle
+            cursor.execute('ALTER TABLE work_hours ADD COLUMN day_active INTEGER DEFAULT 1')
+            self.conn.commit()
+            
+        cursor.execute('''
+        INSERT INTO work_hours (
+            employee_id, date, entry_time, lunch_start, lunch_end, exit_time, day_active
+        ) VALUES (?, ?, ?, ?, ?, ?, 1)
+        ''', (employee_id, date, entry_time, lunch_start, lunch_end, exit_time))
+        
+        self.conn.commit()
+        return cursor.lastrowid

@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, 
     QVBoxLayout, QWidget, QTabBar
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 import sys
 import warnings
@@ -10,9 +10,13 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from models.database import EmployeeDB
 from views.employee_form import EmployeeForm
+from views.work_hours_form import WorkHoursForm
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
+    
+    # Çalışan listesi değiştiğinde yayınlanacak sinyal
+    employee_list_changed = pyqtSignal()
     
     def __init__(self):
         super().__init__()
@@ -70,8 +74,25 @@ class MainWindow(QMainWindow):
         self.employee_form = EmployeeForm(parent=self)
         employee_layout.addWidget(self.employee_form)
         
+        # Çalışan formu sinyallerini bağla
+        self.employee_form.employee_added.connect(self.on_employee_list_changed)
+        self.employee_form.employee_updated.connect(self.on_employee_list_changed)
+        self.employee_form.employee_deleted.connect(self.on_employee_list_changed)
+        
+        # Çalışma saatleri sekmesi
+        self.work_hours_tab = QWidget()
+        work_hours_layout = QVBoxLayout(self.work_hours_tab)
+        
+        # Çalışma saatleri formu
+        self.work_hours_form = WorkHoursForm(parent=self)
+        work_hours_layout.addWidget(self.work_hours_form)
+        
+        # Çalışan listesi değiştiğinde çalışma saatleri formunu güncelle
+        self.employee_list_changed.connect(self.work_hours_form.refresh_employee_list)
+        
         # Sekmeleri ekle
-        self.tab_widget.addTab(self.employee_tab, "Çalışanlar")  
+        self.tab_widget.addTab(self.employee_tab, "Çalışanlar")
+        self.tab_widget.addTab(self.work_hours_tab, "Çalışma Saatleri")
         
         layout.addWidget(self.tab_widget)
         
@@ -121,6 +142,11 @@ class MainWindow(QMainWindow):
                 color: white;
             }
         """)
+        
+    def on_employee_list_changed(self):
+        """Çalışan listesi değiştiğinde çağrılır"""
+        # Çalışan listesi değişti sinyalini yayınla
+        self.employee_list_changed.emit()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

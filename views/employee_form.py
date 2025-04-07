@@ -75,6 +75,9 @@ class EmployeeDialog(QDialog):
 
 class EmployeeForm(QWidget):
     employee_selected = pyqtSignal(int, str)  # id, name
+    employee_added = pyqtSignal()       # Yeni çalışan eklendiğinde
+    employee_updated = pyqtSignal()     # Çalışan güncellendiğinde
+    employee_deleted = pyqtSignal()     # Çalışan silindiğinde
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -130,83 +133,54 @@ class EmployeeForm(QWidget):
     
     def show_context_menu(self, position):
         """Sağ tık menüsünü gösterir"""
-        # Seçili satırı al
-        row = self.employee_list.rowAt(position.y())
+        # Tıklanan öğeyi al
+        item = self.employee_list.itemAt(position)
+        
+        # Eğer geçerli bir öğe yoksa veya başlık satırına tıklandıysa çık
+        if not item or item.row() == 0:
+            return
+            
+        # Çalışanın ID'sini ve aktif durumunu al
+        employee_id = item.data(Qt.UserRole)
+        is_active = item.data(Qt.UserRole + 1)
         
         # Menüyü oluştur
-        menu = QMenu()
+        menu = QMenu(self)
         
-        # Yeni çalışan ekleme seçeneği
-        new_action = menu.addAction("➕ Yeni Çalışan")
-        
-        # Eğer bir çalışan seçili değilse sadece yeni çalışan seçeneğini göster
-        if row < 0 or row == 0:  # Başlık satırı veya boş alan
-            action = menu.exec_(self.employee_list.viewport().mapToGlobal(position))
-            if action == new_action:
-                self.add_employee()
-            return
-        
-        # Seçili çalışanın bilgilerini al
-        name_item = self.employee_list.item(row, 0)  # İsim sütunu
-        if not name_item:
-            return
-        
-        employee_id = name_item.data(Qt.UserRole)
-        is_active = name_item.data(Qt.UserRole + 1)
-        if not employee_id:
-            return
-        
-        # Diğer menü öğelerini ekle
+        # Menü eylemleri
+        edit_action = menu.addAction("Düzenle")
         menu.addSeparator()
-        status_action = menu.addAction("🔴 Pasif Yap" if is_active else "🟢 Aktif Yap")
-        menu.addSeparator()
-        edit_action = menu.addAction("✏️ Düzenle")
-        delete_action = menu.addAction("🗑️ Sil")
         
-        # Menü stilini ayarla
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: white;
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                padding: 5px;
-            }
-            QMenu::item {
-                padding: 8px 25px;
-                border-radius: 2px;
-            }
-            QMenu::item:selected {
-                background-color: #3498db;
-                color: white;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: #bdc3c7;
-                margin: 5px 15px;
-            }
-        """)
+        # Aktif durumuna göre eylem ekle
+        if is_active:
+            deactivate_action = menu.addAction("Pasif Yap")
+            deactivate_action.triggered.connect(lambda: self.toggle_employee_active(employee_id, False))
+        else:
+            activate_action = menu.addAction("Aktif Yap")
+            activate_action.triggered.connect(lambda: self.toggle_employee_active(employee_id, True))
+            
+        edit_action.triggered.connect(lambda: self.edit_employee(employee_id=employee_id))
         
-        # Seçilen işlemi gerçekleştir
-        action = menu.exec_(self.employee_list.viewport().mapToGlobal(position))
+        # Menüyü göster
+        action = menu.exec_(self.employee_list.mapToGlobal(position))
         
-        if action == new_action:
-            self.add_employee()
-        
-        elif action == status_action:
+        if action == deactivate_action:
             # Aktif/Pasif durumunu değiştir
-            new_status = 0 if is_active else 1
-            self.db.update_employee_status(employee_id, new_status)
-            self.load_employees()
+            self.toggle_employee_active(employee_id, False)
+        
+        elif action == activate_action:
+            # Aktif/Pasif durumunu değiştir
+            self.toggle_employee_active(employee_id, True)
         
         elif action == edit_action:
             self.edit_employee(employee_id=employee_id)
         
-        elif action == delete_action:
+        elif action == deactivate_action:
             # Silme onayı iste
             reply = QMessageBox.question(
                 self, 
                 'Çalışanı Sil',
-                f'"{name_item.text()}" isimli çalışanı silmek istediğinize emin misiniz?',
+                f'"{item.text()}" isimli çalışanı silmek istediğinize emin misiniz?',
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
@@ -214,6 +188,7 @@ class EmployeeForm(QWidget):
             if reply == QMessageBox.Yes:
                 # Çalışanı sil
                 self.db.delete_employee(employee_id)
+                self.employee_deleted.emit()  # Sinyal yayınla
                 self.load_employees()
     
     def add_employee(self):
@@ -240,6 +215,7 @@ class EmployeeForm(QWidget):
                     return
                 
                 self.employee_selected.emit(employee_id, values['name'])
+                self.employee_added.emit()  # Sinyal yayınla
                 self.load_employees()
     
     def edit_employee(self, item=None, employee_id=None):
@@ -265,7 +241,14 @@ class EmployeeForm(QWidget):
                             values['daily_food'],
                             values['daily_transport']
                         )
+                        self.employee_updated.emit()  # Sinyal yayınla
                         self.load_employees()
+    
+    def toggle_employee_active(self, employee_id, active_status):
+        """Çalışanın aktif/pasif durumunu değiştirir"""
+        if self.db.toggle_employee_active(employee_id, active_status):
+            self.employee_updated.emit()  # Sinyal yayınla
+            self.load_employees()
     
     def load_employees(self):
         """Çalışanları tabloya yükler"""
