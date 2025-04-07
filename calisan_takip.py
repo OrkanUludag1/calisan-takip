@@ -107,42 +107,8 @@ class EmployeeForm(QWidget):
         main_layout = QVBoxLayout()
         main_layout.setSpacing(15)
         
-        # Başlık
-        title_label = QLabel("<h1>Çalışan Yönetimi</h1>")
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("margin-bottom: 15px; color: #2c3e50;")
-        main_layout.addWidget(title_label)
-        
-        # Form alanları - Grup kutusu içinde 
-        form_group = QGroupBox("Çalışan Bilgileri")
-        form_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                margin-top: 15px;
-                padding-top: 15px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top center;
-                padding: 0 10px;
-                background-color: #f9f9f9;
-            }
-            QLineEdit {
-                padding: 8px;
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                background-color: #fcfcfc;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3498db;
-                background-color: #f0f8ff;
-            }
-        """)
-        
-        form_layout = QFormLayout(form_group)
+        # Form alanları - düz layout içinde artık
+        form_layout = QFormLayout()
         form_layout.setSpacing(12)
         form_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         
@@ -166,7 +132,7 @@ class EmployeeForm(QWidget):
         self.daily_transport_edit.setMinimumHeight(30)
         form_layout.addRow("<b>Günlük Yol:</b>", self.daily_transport_edit)
         
-        main_layout.addWidget(form_group)
+        main_layout.addLayout(form_layout)
         
         # Butonlar
         button_layout = QHBoxLayout()
@@ -243,43 +209,7 @@ class EmployeeForm(QWidget):
         
         main_layout.addLayout(button_layout)
         
-        # Çalışan listesi - Grup kutusu içinde
-        list_group = QGroupBox("Çalışan Listesi")
-        list_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 15px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top center;
-                padding: 0 10px;
-                background-color: #f9f9f9;
-            }
-            QTableWidget {
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                gridline-color: #dcdcdc;
-                selection-background-color: #3498db;
-                selection-color: white;
-            }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                padding: 6px;
-                border: 1px solid #dcdcdc;
-                border-bottom-width: 2px;
-                border-bottom-color: #bdc3c7;
-                font-weight: bold;
-            }
-        """)
-        
-        list_layout = QVBoxLayout(list_group)
-        list_layout.setContentsMargins(10, 20, 10, 10)
-        
+        # Çalışan listesi - artık doğrudan ekleniyor, grup kutusu içinde değil
         self.employee_list = QTableWidget()
         self.employee_list.setColumnCount(4)
         self.employee_list.setHorizontalHeaderLabels(["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"])
@@ -290,9 +220,7 @@ class EmployeeForm(QWidget):
         self.employee_list.setAlternatingRowColors(True)
         self.employee_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # İsim sütunu esnek
         
-        list_layout.addWidget(self.employee_list)
-        
-        main_layout.addWidget(list_group)
+        main_layout.addWidget(self.employee_list)
         
         self.setLayout(main_layout)
         
