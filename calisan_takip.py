@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QLabel, QLineEdit, QPushButton, QTableWidget, 
                              QTableWidgetItem, QTabWidget, QTimeEdit, 
                              QMessageBox, QComboBox, QCheckBox, QSizePolicy, QHBoxLayout, QFrame, QHeaderView,
-                             QGraphicsOpacityEffect, QGridLayout)
+                             QGraphicsOpacityEffect, QGridLayout, QGroupBox, QFormLayout)
 from PyQt5.QtCore import Qt, QTime, QDate, pyqtSignal, QObject, QTimer, QEventLoop
 from PyQt5.QtGui import QFont, QColor
 import sqlite3
@@ -100,79 +100,187 @@ class EmployeeForm(QWidget):
     def __init__(self, db):
         super().__init__()
         self.db = db
-        self.current_edit_id = None  # Düzenlenen çalışanın ID'si
-        self.init_ui()
+        self.current_id = None  # Düzenlenen çalışanın ID'si
+        self.initUI()
     
-    def init_ui(self):
-        layout = QVBoxLayout()
+    def initUI(self):
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
         
-        # Form alanları
-        form_layout = QVBoxLayout()
+        # Başlık
+        title_label = QLabel("<h1>Çalışan Yönetimi</h1>")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("margin-bottom: 15px; color: #2c3e50;")
+        main_layout.addWidget(title_label)
         
-        # Sabit genişlik değeri
-        input_width = 200
+        # Form alanları - Grup kutusu içinde 
+        form_group = QGroupBox("Çalışan Bilgileri")
+        form_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 14px;
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 15px;
+                padding-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 10px;
+                background-color: #f9f9f9;
+            }
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                background-color: #fcfcfc;
+            }
+            QLineEdit:focus {
+                border: 1px solid #3498db;
+                background-color: #f0f8ff;
+            }
+        """)
         
-        name_layout = QHBoxLayout()
-        name_label = QLabel("İsim:")
-        name_label.setFixedWidth(100)  # Etiket genişliği
-        self.name_input = QLineEdit()
-        self.name_input.setFixedWidth(input_width)  # Giriş alanı genişliği
-        name_layout.addWidget(name_label)
-        name_layout.addWidget(self.name_input)
-        name_layout.addStretch()  # Sağa doğru boşluk ekle
-        form_layout.addLayout(name_layout)
+        form_layout = QFormLayout(form_group)
+        form_layout.setSpacing(12)
+        form_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         
-        salary_layout = QHBoxLayout()
-        salary_label = QLabel("Haftalık Ücret:")
-        salary_label.setFixedWidth(100)  # Etiket genişliği
-        self.salary_input = QLineEdit()
-        self.salary_input.setFixedWidth(input_width)  # Giriş alanı genişliği
-        salary_layout.addWidget(salary_label)
-        salary_layout.addWidget(self.salary_input)
-        salary_layout.addStretch()  # Sağa doğru boşluk ekle
-        form_layout.addLayout(salary_layout)
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Çalışan Adı")
+        self.name_edit.setMinimumHeight(30)
+        form_layout.addRow("<b>İsim:</b>", self.name_edit)
         
-        food_layout = QHBoxLayout()
-        food_label = QLabel("Günlük Yemek:")
-        food_label.setFixedWidth(100)  # Etiket genişliği
-        self.food_input = QLineEdit()
-        self.food_input.setFixedWidth(input_width)  # Giriş alanı genişliği
-        food_layout.addWidget(food_label)
-        food_layout.addWidget(self.food_input)
-        food_layout.addStretch()  # Sağa doğru boşluk ekle
-        form_layout.addLayout(food_layout)
+        self.weekly_salary_edit = QLineEdit()
+        self.weekly_salary_edit.setPlaceholderText("Haftalık Ücret")
+        self.weekly_salary_edit.setMinimumHeight(30)
+        form_layout.addRow("<b>Haftalık Ücret:</b>", self.weekly_salary_edit)
         
-        transport_layout = QHBoxLayout()
-        transport_label = QLabel("Günlük Yol:")
-        transport_label.setFixedWidth(100)  # Etiket genişliği
-        self.transport_input = QLineEdit()
-        self.transport_input.setFixedWidth(input_width)  # Giriş alanı genişliği
-        transport_layout.addWidget(transport_label)
-        transport_layout.addWidget(self.transport_input)
-        transport_layout.addStretch()  # Sağa doğru boşluk ekle
-        form_layout.addLayout(transport_layout)
+        self.daily_food_edit = QLineEdit()
+        self.daily_food_edit.setPlaceholderText("Günlük Yemek Ücreti")
+        self.daily_food_edit.setMinimumHeight(30)
+        form_layout.addRow("<b>Günlük Yemek:</b>", self.daily_food_edit)
+        
+        self.daily_transport_edit = QLineEdit()
+        self.daily_transport_edit.setPlaceholderText("Günlük Yol Ücreti")
+        self.daily_transport_edit.setMinimumHeight(30)
+        form_layout.addRow("<b>Günlük Yol:</b>", self.daily_transport_edit)
+        
+        main_layout.addWidget(form_group)
         
         # Butonlar
         button_layout = QHBoxLayout()
-        self.add_button = QPushButton("Ekle")
-        self.add_button.clicked.connect(self.add_employee)
-        button_layout.addWidget(self.add_button)
+        button_layout.setSpacing(10)
+        button_layout.setContentsMargins(0, 15, 0, 15)
         
-        self.update_button = QPushButton("Güncelle")
-        self.update_button.clicked.connect(self.update_employee)
-        self.update_button.setVisible(False)  # Başlangıçta gizli
-        button_layout.addWidget(self.update_button)
+        self.add_btn = QPushButton("Ekle")
+        self.add_btn.setMinimumHeight(40)
+        self.add_btn.clicked.connect(self.add_employee)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2ecc71;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #27ae60;
+            }
+            QPushButton:pressed {
+                background-color: #229954;
+            }
+        """)
+        button_layout.addWidget(self.add_btn)
         
-        self.cancel_button = QPushButton("İptal")
-        self.cancel_button.clicked.connect(self.cancel_edit)
-        self.cancel_button.setVisible(False)  # Başlangıçta gizli
-        button_layout.addWidget(self.cancel_button)
+        self.update_btn = QPushButton("Güncelle")
+        self.update_btn.setMinimumHeight(40)
+        self.update_btn.clicked.connect(self.update_employee)
+        self.update_btn.setEnabled(False)
+        self.update_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QPushButton:pressed {
+                background-color: #1c6ea4;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        button_layout.addWidget(self.update_btn)
         
-        button_layout.addStretch()  # Sağa doğru boşluk ekle
-        form_layout.addLayout(button_layout)
-        layout.addLayout(form_layout)
+        self.clear_btn = QPushButton("Temizle")
+        self.clear_btn.setMinimumHeight(40)
+        self.clear_btn.clicked.connect(self.clear_form)
+        self.clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+            QPushButton:pressed {
+                background-color: #a93226;
+            }
+        """)
+        button_layout.addWidget(self.clear_btn)
         
-        # Çalışan listesi
+        main_layout.addLayout(button_layout)
+        
+        # Çalışan listesi - Grup kutusu içinde
+        list_group = QGroupBox("Çalışan Listesi")
+        list_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 14px;
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 5px;
+                padding-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 10px;
+                background-color: #f9f9f9;
+            }
+            QTableWidget {
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                alternate-row-color: #f9f9f9;
+                gridline-color: #dcdcdc;
+                selection-background-color: #3498db;
+                selection-color: white;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                padding: 6px;
+                border: 1px solid #dcdcdc;
+                border-bottom-width: 2px;
+                border-bottom-color: #bdc3c7;
+                font-weight: bold;
+            }
+        """)
+        
+        list_layout = QVBoxLayout(list_group)
+        list_layout.setContentsMargins(10, 20, 10, 10)
+        
         self.employee_list = QTableWidget()
         self.employee_list.setColumnCount(4)
         self.employee_list.setHorizontalHeaderLabels(["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"])
@@ -180,35 +288,30 @@ class EmployeeForm(QWidget):
         self.employee_list.setSelectionMode(QTableWidget.SingleSelection)
         self.employee_list.itemDoubleClicked.connect(self.edit_employee)
         self.employee_list.verticalHeader().setVisible(False)  # Satır numaralarını gizle
-        layout.addWidget(self.employee_list)
+        self.employee_list.setAlternatingRowColors(True)
+        self.employee_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # İsim sütunu esnek
         
-        self.setLayout(layout)
+        list_layout.addWidget(self.employee_list)
+        
+        main_layout.addWidget(list_group)
+        
+        self.setLayout(main_layout)
+        
+        # Veriyi yükle
         self.load_employees()
-    
-    def format_currency(self, amount):
-        """
-        Para birimini formatlar:
-        - Ondalık kısım olmayacak
-        - Birler basamağı 5'e yuvarlanacak
-        - Binlik ayırıcı kullanılacak
-        """
-        # Birler basamağını 5'e yuvarla
-        rounded = round(amount / 5) * 5
-        # Binlik ayırıcı ekle
-        return "{:,.0f}".format(rounded).replace(",", ".")
     
     def add_employee(self):
         try:
-            name = self.name_input.text().strip()
-            weekly_salary = float(self.salary_input.text().replace(".", "").replace(",", "."))
-            daily_food = float(self.food_input.text().replace(".", "").replace(",", "."))
-            daily_transport = float(self.transport_input.text().replace(".", "").replace(",", "."))
+            name = self.name_edit.text().strip()
+            weekly_salary = float(self.weekly_salary_edit.text().replace(".", "").replace(",", "."))
+            daily_food = float(self.daily_food_edit.text().replace(".", "").replace(",", "."))
+            daily_transport = float(self.daily_transport_edit.text().replace(".", "").replace(",", "."))
             
             if not name:
                 QMessageBox.warning(self, "Uyarı", "İsim alanı boş olamaz!")
                 return
             
-            if self.current_edit_id is None:  # Yeni çalışan ekleme
+            if self.current_id is None:  # Yeni çalışan ekleme
                 self.db.add_employee(name, weekly_salary, daily_food, daily_transport)
             else:  # Mevcut çalışanı güncelleme
                 cursor = self.db.conn.cursor()
@@ -216,7 +319,7 @@ class EmployeeForm(QWidget):
                 UPDATE employees 
                 SET name=?, weekly_salary=?, daily_food=?, daily_transport=?
                 WHERE id=?
-                ''', (name, weekly_salary, daily_food, daily_transport, self.current_edit_id))
+                ''', (name, weekly_salary, daily_food, daily_transport, self.current_id))
                 self.db.conn.commit()
             
             self.clear_form()
@@ -227,7 +330,7 @@ class EmployeeForm(QWidget):
             QMessageBox.warning(self, "Uyarı", "Lütfen ücret alanlarına geçerli sayısal değerler girin!")
     
     def update_employee(self):
-        self.add_employee()  # Aynı fonksiyonu kullan ama current_edit_id ile güncelleme yap
+        self.add_employee()  # Aynı fonksiyonu kullan ama current_id ile güncelleme yap
     
     def edit_employee(self, item):
         row = item.row()
@@ -238,29 +341,26 @@ class EmployeeForm(QWidget):
         employee = cursor.fetchone()
         
         if employee:
-            self.current_edit_id = employee_id
-            self.name_input.setText(employee[0])
-            self.salary_input.setText(self.format_currency(employee[1]))
-            self.food_input.setText(self.format_currency(employee[2]))
-            self.transport_input.setText(self.format_currency(employee[3]))
+            self.current_id = employee_id
+            self.name_edit.setText(employee[0])
+            self.weekly_salary_edit.setText(str(employee[1]))
+            self.daily_food_edit.setText(str(employee[2]))
+            self.daily_transport_edit.setText(str(employee[3]))
             
-            self.add_button.setVisible(False)
-            self.update_button.setVisible(True)
-            self.cancel_button.setVisible(True)
-    
-    def cancel_edit(self):
-        self.clear_form()
+            self.add_btn.setVisible(False)
+            self.update_btn.setVisible(True)
+            self.clear_btn.setVisible(True)
     
     def clear_form(self):
-        self.current_edit_id = None
-        self.name_input.clear()
-        self.salary_input.clear()
-        self.food_input.clear()
-        self.transport_input.clear()
+        self.current_id = None
+        self.name_edit.clear()
+        self.weekly_salary_edit.clear()
+        self.daily_food_edit.clear()
+        self.daily_transport_edit.clear()
         
-        self.add_button.setVisible(True)
-        self.update_button.setVisible(False)
-        self.cancel_button.setVisible(False)
+        self.add_btn.setVisible(True)
+        self.update_btn.setVisible(False)
+        self.clear_btn.setVisible(False)
     
     def load_employees(self):
         self.employee_list.setRowCount(0)
@@ -275,9 +375,9 @@ class EmployeeForm(QWidget):
             
             items = [
                 name_item,
-                QTableWidgetItem(self.format_currency(weekly_salary) + " TL"),
-                QTableWidgetItem(self.format_currency(daily_food) + " TL"),
-                QTableWidgetItem(self.format_currency(daily_transport) + " TL")
+                QTableWidgetItem(str(weekly_salary)),
+                QTableWidgetItem(str(daily_food)),
+                QTableWidgetItem(str(daily_transport))
             ]
             
             # Tüm öğeleri ekle
@@ -342,6 +442,53 @@ class TimeTrackingForm(QWidget):
         date_label = QLabel(f"<b>Tarih Aralığı:</b> {start_date.toString('dd.MM.yyyy')} - {end_date.toString('dd.MM.yyyy')}")
         date_range_layout.addWidget(date_label)
         layout.addWidget(self.date_range_group)
+        
+        # Tablo Grup Kutusu
+        time_table_group = QGroupBox("Zaman Çizelgesi")
+        time_table_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 14px;
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 5px;
+                padding-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 10px;
+                background-color: #f9f9f9;
+            }
+            QTableWidget {
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                alternate-row-color: #f9f9f9;
+                gridline-color: #dcdcdc;
+                selection-background-color: #3498db;
+                selection-color: white;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                padding: 6px;
+                border: 1px solid #dcdcdc;
+                border-bottom-width: 2px;
+                border-bottom-color: #bdc3c7;
+                font-weight: bold;
+            }
+            QTimeEdit {
+                padding: 4px;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QTimeEdit:focus {
+                border: 1px solid #3498db;
+                background-color: #f0f8ff;
+            }
+        """)
+        
+        time_table_layout = QVBoxLayout(time_table_group)
         
         # Tablo
         self.days_table = QTableWidget()
@@ -475,7 +622,7 @@ class TimeTrackingForm(QWidget):
         
         layout.addLayout(main_layout)
         self.setLayout(layout)
-    
+        
     def load_week_days(self):
         """Haftalık günleri yükler"""
         self.days_table.clearContents()
@@ -576,6 +723,79 @@ class TimeTrackingForm(QWidget):
         self.changes_pending = True  # Değişiklik bayrağını işaretle
         self.calculate_total_hours()  # Sadece toplamları güncelle
     
+    def auto_save_all(self):
+        """Değişiklikleri otomatik kaydeder"""
+        if not hasattr(self, 'changes_pending') or not self.changes_pending:
+            return
+            
+        if self.current_employee_id:
+            for row in range(7):
+                self.save_day_data(row)
+            
+            self.changes_pending = False
+            self.status_label.setText("Değişiklikler kaydedildi")
+            
+            # 3 saniye sonra durum mesajını temizle
+            QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+    
+    def save_day_data(self, row):
+        """Günlük veriyi kaydeder"""
+        if not self.current_employee_id:
+            return
+            
+        # Tarih bilgisini al
+        date_item = self.days_table.item(row, 0)
+        if not date_item:
+            return
+            
+        date = date_item.data(Qt.UserRole).toString("yyyy-MM-dd")
+        
+        # Saat verilerini al
+        entry_time = self.days_table.cellWidget(row, 2).time().toString("HH:mm")
+        lunch_start = self.days_table.cellWidget(row, 3).time().toString("HH:mm")
+        lunch_end = self.days_table.cellWidget(row, 4).time().toString("HH:mm")
+        exit_time = self.days_table.cellWidget(row, 5).time().toString("HH:mm")
+        
+        # Veritabanına kaydet
+        self.db.add_work_record(
+            self.current_employee_id,
+            date,
+            entry_time,
+            lunch_start,
+            lunch_end,
+            exit_time
+        )
+        
+    def load_saved_records(self):
+        """Veritabanından kayıtlı günleri yükler"""
+        cursor = self.db.conn.cursor()
+        cursor.execute('''
+            SELECT date, entry_time, lunch_start, lunch_end, exit_time 
+            FROM work_records 
+            WHERE employee_id = ?
+        ''', (self.current_employee_id,))
+        
+        records = cursor.fetchall()
+        for record in records:
+            date = QDate.fromString(record[0], "yyyy-MM-dd")
+            
+            # Tarihi bul ve saatleri ayarla
+            for row in range(7):
+                date_item = self.days_table.item(row, 0)
+                if date_item and date_item.data(Qt.UserRole).toString("yyyy-MM-dd") == date.toString("yyyy-MM-dd"):
+                    # Saatleri ayarla
+                    for col, time_str in enumerate(record[1:], start=2):
+                        time_widget = self.days_table.cellWidget(row, col)
+                        if time_widget:
+                            time = QTime.fromString(time_str, "HH:mm")
+                            time_widget.setTime(time)
+                    break
+    
+    def on_time_changed(self, row):
+        """Saat değiştiğinde çağrılır"""
+        self.changes_pending = True  # Değişiklik bayrağını işaretle
+        self.calculate_total_hours()  # Sadece toplamları güncelle
+    
     def calculate_total_hours(self):
         """Toplam çalışma saatlerini hesaplar"""
         if not self.current_employee_id:
@@ -658,79 +878,6 @@ class TimeTrackingForm(QWidget):
             'total_amount': total_amount
         }
     
-    def auto_save_all(self):
-        """Değişiklikleri otomatik kaydeder"""
-        if not hasattr(self, 'changes_pending') or not self.changes_pending:
-            return
-            
-        if self.current_employee_id:
-            for row in range(7):
-                self.save_day_data(row)
-            
-            self.changes_pending = False
-            self.status_label.setText("Değişiklikler kaydedildi")
-            
-            # 3 saniye sonra durum mesajını temizle
-            QTimer.singleShot(3000, lambda: self.status_label.setText(""))
-    
-    def save_day_data(self, row):
-        """Günlük veriyi kaydeder"""
-        if not self.current_employee_id:
-            return
-            
-        # Tarih bilgisini al
-        date_item = self.days_table.item(row, 0)
-        if not date_item:
-            return
-            
-        date = date_item.data(Qt.UserRole).toString("yyyy-MM-dd")
-        
-        # Saat verilerini al
-        entry_time = self.days_table.cellWidget(row, 2).time().toString("HH:mm")
-        lunch_start = self.days_table.cellWidget(row, 3).time().toString("HH:mm")
-        lunch_end = self.days_table.cellWidget(row, 4).time().toString("HH:mm")
-        exit_time = self.days_table.cellWidget(row, 5).time().toString("HH:mm")
-        
-        # Veritabanına kaydet
-        self.db.add_work_record(
-            self.current_employee_id,
-            date,
-            entry_time,
-            lunch_start,
-            lunch_end,
-            exit_time
-        )
-        
-    def load_saved_records(self):
-        """Veritabanından kayıtlı günleri yükler"""
-        cursor = self.db.conn.cursor()
-        cursor.execute('''
-            SELECT date, entry_time, lunch_start, lunch_end, exit_time 
-            FROM work_records 
-            WHERE employee_id = ?
-        ''', (self.current_employee_id,))
-        
-        records = cursor.fetchall()
-        for record in records:
-            date = QDate.fromString(record[0], "yyyy-MM-dd")
-            
-            # Tarihi bul ve saatleri ayarla
-            for row in range(7):
-                date_item = self.days_table.item(row, 0)
-                if date_item and date_item.data(Qt.UserRole).toString("yyyy-MM-dd") == date.toString("yyyy-MM-dd"):
-                    # Saatleri ayarla
-                    for col, time_str in enumerate(record[1:], start=2):
-                        time_widget = self.days_table.cellWidget(row, col)
-                        if time_widget:
-                            time = QTime.fromString(time_str, "HH:mm")
-                            time_widget.setTime(time)
-                    break
-    
-    def on_time_changed(self, row):
-        """Saat değiştiğinde çağrılır"""
-        self.changes_pending = True  # Değişiklik bayrağını işaretle
-        self.calculate_total_hours()  # Sadece toplamları güncelle
-    
     def format_currency(self, value):
         """Para birimini istenilen formata çevirir:
         - Birler basamağı 5'e yuvarlanır
@@ -750,19 +897,61 @@ class TimeTrackingForm(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.db = EmployeeDB()
-        self.central_widget = QTabWidget()
-        self.setCentralWidget(self.central_widget)
-        self.is_updating = False  # Güncelleme durumunu takip etmek için
-        self.init_ui()
         
-    def init_ui(self):
-        # Çalışanlar sekmesi
+        self.db = EmployeeDB("employee_tracking.db")
+        self.initUI()
+        
+    def initUI(self):
+        self.setWindowTitle("Çalışan Takip Sistemi")
+        self.setGeometry(100, 100, 1200, 700)
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f5f5f5;
+            }
+            QTabWidget {
+                background-color: white;
+            }
+            QTabWidget::pane {
+                border: 1px solid #bdc3c7;
+                background-color: white;
+                border-radius: 5px;
+            }
+            QTabBar::tab {
+                background-color: #ecf0f1;
+                border: 1px solid #bdc3c7;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                padding: 8px 12px;
+                margin-right: 2px;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                background-color: white;
+                border-bottom: 1px solid white;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #d6d9dc;
+            }
+        """)
+        
+        # Ana widget ve tab widget
+        self.central_widget = QTabWidget()
+        self.central_widget.setTabPosition(QTabWidget.North)
+        self.central_widget.setMovable(True)
+        self.setCentralWidget(self.central_widget)
+        
+        # Çalışan ekleme sekmesi
         self.employee_form = EmployeeForm(self.db)
         self.employee_form.data_updated.connect(self.update_all_tabs)
-        self.central_widget.addTab(self.employee_form, "Çalışanlar")
+        self.central_widget.addTab(self.employee_form, "ÇALIŞANLAR")
         
-        # Aktif çalışanlar için çalışma saati sekmeleri
+        # Mevcut çalışanlar için sekmeleri yükle
+        self.load_employee_tabs()
+        
+        self.show()
+    
+    def load_employee_tabs(self):
         cursor = self.db.conn.cursor()
         cursor.execute('''
             SELECT id, name 
@@ -775,51 +964,41 @@ class MainWindow(QMainWindow):
             time_form = TimeTrackingForm(self.db, employee_id, name)
             time_form.data_updated.connect(self.update_all_tabs)
             self.central_widget.addTab(time_form, name.upper())
-        
-        # Pencere ayarları
-        self.setGeometry(100, 100, 1200, 800)
-        self.setWindowTitle('Çalışan Takip')
-        self.show()
     
     def update_all_tabs(self):
-        if self.is_updating:  # Zaten güncelleme yapılıyorsa çık
+        if self.central_widget.count() < 2:  # Çalışan sekmesi yoksa çık
             return
             
-        self.is_updating = True  # Güncelleme başlıyor
+        # Aktif çalışanları al
+        cursor = self.db.conn.cursor()
+        cursor.execute('''
+            SELECT id, name 
+            FROM employees 
+            ORDER BY weekly_salary DESC
+        ''')
+        active_employees = {emp_id: name for emp_id, name in cursor.fetchall()}
         
-        try:
-            # Aktif çalışanları al
-            cursor = self.db.conn.cursor()
-            cursor.execute('''
-                SELECT id, name 
-                FROM employees 
-                ORDER BY weekly_salary DESC
-            ''')
-            active_employees = {emp_id: name for emp_id, name in cursor.fetchall()}
-            
-            # Mevcut sekmeleri kontrol et
-            index = 0
-            while index < self.central_widget.count():
-                widget = self.central_widget.widget(index)
-                if isinstance(widget, TimeTrackingForm):
-                    if widget.current_employee_id not in active_employees:
-                        # Çalışan artık aktif değilse sekmeyi kaldır
-                        self.central_widget.removeTab(index)
-                        continue
-                    else:
-                        # Aktif çalışanın sekmesini güncelle
-                        widget.load_week_days()
-                        # Çalışanı işlenmiş olarak işaretle
-                        active_employees.pop(widget.current_employee_id)
-                index += 1
-            
-            # Yeni aktif çalışanlar için sekme ekle
-            for emp_id, name in active_employees.items():
-                time_form = TimeTrackingForm(self.db, emp_id, name)
-                time_form.data_updated.connect(self.update_all_tabs)
-                self.central_widget.addTab(time_form, name.upper())
-        finally:
-            self.is_updating = False  # Güncelleme bitti
+        # Mevcut sekmeleri kontrol et
+        index = 1
+        while index < self.central_widget.count():
+            widget = self.central_widget.widget(index)
+            if isinstance(widget, TimeTrackingForm):
+                if widget.current_employee_id not in active_employees:
+                    # Çalışan artık aktif değilse sekmeyi kaldır
+                    self.central_widget.removeTab(index)
+                    continue
+                else:
+                    # Aktif çalışanın sekmesini güncelle
+                    widget.load_week_days()
+                    # Çalışanı işlenmiş olarak işaretle
+                    active_employees.pop(widget.current_employee_id)
+            index += 1
+        
+        # Yeni aktif çalışanlar için sekme ekle
+        for emp_id, name in active_employees.items():
+            time_form = TimeTrackingForm(self.db, emp_id, name)
+            time_form.data_updated.connect(self.update_all_tabs)
+            self.central_widget.addTab(time_form, name.upper())
     
     def closeEvent(self, event):
         self.db.close()
