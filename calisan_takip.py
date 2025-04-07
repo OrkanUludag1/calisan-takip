@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QLabel, QLineEdit, QPushButton, QTableWidget, 
                              QTableWidgetItem, QTabWidget, QTimeEdit, 
                              QMessageBox, QComboBox, QCheckBox, QSizePolicy, QHBoxLayout, QFrame, QHeaderView,
-                             QGraphicsOpacityEffect)
+                             QGraphicsOpacityEffect, QGridLayout)
 from PyQt5.QtCore import Qt, QTime, QDate, pyqtSignal, QObject, QTimer, QEventLoop
 from PyQt5.QtGui import QFont, QColor
 import sqlite3
@@ -295,12 +295,27 @@ class TimeTrackingForm(QWidget):
         self.current_employee_id = employee_id
         self.current_employee_name = employee_name
         self.changes_pending = False
-        self.current_totals = {}
         
         # Otomatik kaydetme zamanlayıcısı
         self.auto_save_timer = QTimer()
         self.auto_save_timer.timeout.connect(self.auto_save_all)
         self.auto_save_timer.start(2000)  # 2 saniyede bir kaydet
+        
+        # Mevcut haftanın başlangıç tarihi
+        self.current_date = QDate.currentDate()
+        self.current_date = self.current_date.addDays(-self.current_date.dayOfWeek() + 1)
+        
+        # Durum kontrol kutuları
+        self.day_status_checkboxes = []
+        
+        # Toplamları tutacak değişkenler
+        self.current_totals = {
+            'total_hours': 0,
+            'work_salary': 0,
+            'transport_total': 0,
+            'food_total': 0,
+            'total_amount': 0
+        }
         
         self.initUI()
         self.load_week_days()  # Haftayı yükle
@@ -311,290 +326,381 @@ class TimeTrackingForm(QWidget):
         # Sol: Tablo, Sağ: Özetler
         main_layout = QHBoxLayout()
         
-        # Sol Bölüm: Tablo ve Başlık
-        left_layout = QVBoxLayout()
+        # Tarih aralığını göster
+        self.date_range_group = QFrame()
+        self.date_range_group.setFrameShape(QFrame.StyledPanel)
+        self.date_range_group.setStyleSheet("background-color: #f8f9fa; border-radius: 5px;")
+        date_range_layout = QHBoxLayout(self.date_range_group)
         
-        # Başlık
-        if self.current_employee_name:
-            title_label = QLabel(f"<h2>{self.current_employee_name.upper()}</h2>")
-            title_label.setAlignment(Qt.AlignCenter)
-            left_layout.addWidget(title_label)
+        # Current date'i Pazartesi olarak ayarla (haftanın başlangıcı)
+        self.current_date = QDate.currentDate()
+        self.current_date = self.current_date.addDays(-self.current_date.dayOfWeek() + 1)
         
-        # Tarih aralığı container'ı
-        self.date_range_label = QLabel()
-        self.date_range_label.setAlignment(Qt.AlignCenter)
-        self.date_range_label.setStyleSheet("""
-            font-weight: bold;
-            padding: 5px;
-            background-color: #f5f5f5;
-            border: 1px solid #d0d0d0;
-            border-radius: 4px;
-            margin-bottom: 5px;
-        """)
-        left_layout.addWidget(self.date_range_label)
+        start_date = self.current_date
+        end_date = self.current_date.addDays(6)
+        
+        date_label = QLabel(f"<b>Tarih Aralığı:</b> {start_date.toString('dd.MM.yyyy')} - {end_date.toString('dd.MM.yyyy')}")
+        date_range_layout.addWidget(date_label)
+        layout.addWidget(self.date_range_group)
         
         # Tablo
         self.days_table = QTableWidget()
-        self.days_table.setColumnCount(5)
+        self.days_table.setColumnCount(6)  # Gün, Durum, Giriş, Öğle Başlangıç, Öğle Bitiş, Çıkış
         self.days_table.setRowCount(7)
         self.days_table.setHorizontalHeaderLabels([
-            "Gün", "Giriş", "Öğle Başlangıç",
+            "Gün", "Durum", "Giriş", "Öğle Başlangıç",
             "Öğle Bitiş", "Çıkış"
         ])
         self.days_table.verticalHeader().setVisible(False)  # Satır numaralarını gizle
-        left_layout.addWidget(self.days_table)
         
-        # Sağ taraf (toplam bilgileri)
-        right_widget = QWidget()
-        right_widget.setFixedWidth(250)  # Sabit genişlik
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.addWidget(right_widget)
+        # Tablo için kutu
+        table_group = QFrame()
+        table_group.setFrameShape(QFrame.StyledPanel)
+        table_group.setStyleSheet("""
+            background-color: #ffffff;
+            border-radius: 5px;
+            padding: 5px;
+        """)
+        table_layout = QVBoxLayout(table_group)
+        table_layout.addWidget(QLabel("<b>Zaman Çizelgesi</b>"))
+        table_layout.addWidget(self.days_table)
         
-        # Toplam bilgileri için grup kutusu
-        totals_group = QWidget()
-        totals_group.setFixedWidth(230)  # İç grup kutusu genişliği
-        totals_layout = QVBoxLayout()
-        totals_layout.setSpacing(10)  # Öğeler arası boşluk
+        # Özet bölümü
+        summary_group = QFrame()
+        summary_group.setFrameShape(QFrame.StyledPanel)
+        summary_group.setStyleSheet("""
+            background-color: #ffffff;
+            border-radius: 5px;
+            padding: 10px;
+        """)
+        summary_layout = QVBoxLayout(summary_group)
         
-        # Container'lar için sabit yükseklik
-        container_height = 80
+        # Çalışma saati
+        hours_layout = QVBoxLayout()
+        hours_layout.setContentsMargins(0, 0, 0, 0)
+        hours_layout.setSpacing(0)
+        hours_title = QLabel("Çalışma Saati")
+        self.total_hours_label = QLabel("0.0")
+        hours_layout.addWidget(hours_title)
+        hours_layout.addWidget(self.total_hours_label)
         
-        # Toplam çalışma
-        total_hours_container = QWidget()
-        total_hours_container.setFixedHeight(container_height)
-        total_hours_layout = QVBoxLayout(total_hours_container)
-        total_hours_layout.setContentsMargins(0, 0, 0, 0)
-        total_hours_layout.setSpacing(0)
-        total_hours_title = QLabel("Toplam Çalışma")
-        self.total_hours_label = QLabel("0 saat")
-        total_hours_layout.addWidget(total_hours_title)
-        total_hours_layout.addWidget(self.total_hours_label)
-        
-        # Çalışma ücreti
-        salary_container = QWidget()
-        salary_container.setFixedHeight(container_height)
-        salary_layout = QVBoxLayout(salary_container)
+        # Haftalık ücret
+        salary_layout = QVBoxLayout()
         salary_layout.setContentsMargins(0, 0, 0, 0)
         salary_layout.setSpacing(0)
-        salary_title = QLabel("Çalışma Ücreti")
+        salary_title = QLabel("Haftalık Ücret")
         self.weekly_salary_label = QLabel("0 TL")
         salary_layout.addWidget(salary_title)
         salary_layout.addWidget(self.weekly_salary_label)
         
-        # Yol parası
-        transport_container = QWidget()
-        transport_container.setFixedHeight(container_height)
-        transport_layout = QVBoxLayout(transport_container)
+        # Yol ücreti toplamı
+        transport_layout = QVBoxLayout()
         transport_layout.setContentsMargins(0, 0, 0, 0)
         transport_layout.setSpacing(0)
-        transport_title = QLabel("Yol Parası")
+        transport_title = QLabel("Yol Ücreti")
         self.transport_total_label = QLabel("0 TL")
         transport_layout.addWidget(transport_title)
         transport_layout.addWidget(self.transport_total_label)
         
-        # Yemek parası
-        food_container = QWidget()
-        food_container.setFixedHeight(container_height)
-        food_layout = QVBoxLayout(food_container)
+        # Yemek ücreti toplamı
+        food_layout = QVBoxLayout()
         food_layout.setContentsMargins(0, 0, 0, 0)
         food_layout.setSpacing(0)
-        food_title = QLabel("Yemek Parası")
+        food_title = QLabel("Yemek Ücreti")
         self.food_total_label = QLabel("0 TL")
         food_layout.addWidget(food_title)
         food_layout.addWidget(self.food_total_label)
         
         # Toplam tutar
-        total_container = QWidget()
-        total_container.setFixedHeight(container_height)
-        total_layout = QVBoxLayout(total_container)
+        total_layout = QVBoxLayout()
         total_layout.setContentsMargins(0, 0, 0, 0)
         total_layout.setSpacing(0)
         total_title = QLabel("Toplam")
-        self.total_amount_label = QLabel("0 TL")
+        self.gross_total_label = QLabel("0 TL")
         total_layout.addWidget(total_title)
-        total_layout.addWidget(self.total_amount_label)
+        total_layout.addWidget(self.gross_total_label)
         
         # Stil tanımlamaları
         title_style = """
-            QLabel {
-                color: #666;
-                font-weight: bold;
-                padding: 5px;
-                padding-bottom: 2px;
-                margin: 2px;
-                margin-bottom: 0;
-                border: 1px solid #ccc;
-                border-bottom: none;
-                border-radius: 4px 4px 0 0;
-                background-color: #f8f9fa;
-            }
+            color: #495057;
+            font-weight: bold;
+            padding: 5px;
+            background-color: #e9ecef;
+            border-radius: 3px 3px 0 0;
+            margin-bottom: 2px;
         """
         
         value_style = """
-            QLabel {
-                color: #000;
-                font-size: 14px;
-                padding: 5px;
-                padding-top: 2px;
-                margin: 2px;
-                margin-top: 0;
-                border: 1px solid #ccc;
-                border-top: none;
-                border-radius: 0 0 4px 4px;
-                background-color: #fff;
-            }
+            color: #212529;
+            font-size: 16px;
+            padding: 5px;
+            background-color: #f8f9fa;
+            border-radius: 0 0 3px 3px;
+            margin-bottom: 10px;
         """
         
         # Stilleri uygula
-        for title in [total_hours_title, salary_title, transport_title, food_title, total_title]:
+        for title in [hours_title, salary_title, transport_title, food_title, total_title]:
             title.setStyleSheet(title_style)
             title.setAlignment(Qt.AlignCenter)
         
         for value in [self.total_hours_label, self.weekly_salary_label, 
                      self.transport_total_label, self.food_total_label, 
-                     self.total_amount_label]:
+                     self.gross_total_label]:
             value.setStyleSheet(value_style)
             value.setAlignment(Qt.AlignCenter)
         
-        # Containerları layout'a ekle
-        totals_layout.addWidget(total_hours_container)
-        totals_layout.addWidget(salary_container)
-        totals_layout.addWidget(transport_container)
-        totals_layout.addWidget(food_container)
-        totals_layout.addWidget(total_container)
-        
-        # Toplam grup kutusunu tamamla
-        totals_group.setLayout(totals_layout)
-        
-        # Ana layout'a sol ve sağ tarafı ekle
-        main_layout.addLayout(left_layout, 2)  # 2 birim genişlik
-        right_layout.addWidget(totals_group)  # 1 birim genişlik
-        
-        # Durum etiketi
+        # Durum mesajı
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("""
-            QLabel {
-                padding: 5px;
-                margin-top: 5px;
-                border-radius: 4px;
-            }
+            color: #28a745;
+            font-style: italic;
+            padding: 5px;
         """)
-        right_layout.addWidget(self.status_label)
         
-        # Ana layout'u widget'a ekle
-        self.setLayout(main_layout)
+        # Özetleri ekle
+        grid_layout = QGridLayout()
+        grid_layout.addLayout(hours_layout, 0, 0)
+        grid_layout.addLayout(salary_layout, 0, 1)
+        grid_layout.addLayout(transport_layout, 1, 0)
+        grid_layout.addLayout(food_layout, 1, 1)
+        grid_layout.addLayout(total_layout, 2, 0, 1, 2)  # 2 sütunu da kapla
         
-        # Değişiklik bayrağı
-        self.changes_pending = False
+        summary_layout.addLayout(grid_layout)
+        summary_layout.addWidget(self.status_label)
         
-        self.days_table.verticalHeader().setVisible(False)  # Satır numaralarını gizle
-        self.days_table.setShowGrid(True)
-        self.days_table.setAlternatingRowColors(True)
-        self.days_table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #d0d0d0;
-                selection-background-color: #e0e0ff;
-            }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                padding: 4px;
-                border: 1px solid #d0d0d0;
-                font-weight: bold;
-            }
-        """)
+        # Ana düzeni oluştur
+        main_layout.addWidget(table_group, 7)  # 70% genişlik
+        main_layout.addWidget(summary_group, 3)  # 30% genişlik
+        
+        layout.addLayout(main_layout)
+        self.setLayout(layout)
     
     def load_week_days(self):
         """Haftalık günleri yükler"""
-        if not self.current_employee_id:
-            return
-            
-        # Tarihleri ayarla
-        current_date = QDate.currentDate()
-        start_of_week = current_date.addDays(-current_date.dayOfWeek() + 1)
-        end_of_week = start_of_week.addDays(6)
-        
-        # Tarih aralığını göster
-        self.date_range_label.setText(
-            f"Tarih Aralığı: {start_of_week.toString('dd.MM.yyyy')} - {end_of_week.toString('dd.MM.yyyy')}"
-        )
+        self.days_table.clearContents()
         
         # Varsayılan saatler
-        default_times = [
-            QTime(8, 15),    # Giriş: 08:15
-            QTime(13, 15),   # Öğle başlangıç: 13:15
-            QTime(13, 45),   # Öğle bitiş: 13:45
-            QTime(18, 45)    # Çıkış: 18:45
-        ]
+        default_entry = QTime(8, 0)  # 08:00
+        default_lunch_start = QTime(12, 0)  # 12:00
+        default_lunch_end = QTime(13, 0)  # 13:00
+        default_exit = QTime(17, 0)  # 17:00
         
-        # Türkçe gün isimleri
-        turkce_gunler = [
-            "Pazartesi", "Salı", "Çarşamba", 
-            "Perşembe", "Cuma", "Cumartesi", "Pazar"
-        ]
+        # Tablonun başlangıç gününü belirle (Pazartesi)
+        current_week_start = self.current_date
         
         # Tablo başlıklarını ayarla
         self.days_table.setHorizontalHeaderLabels([
-            "Gün", "Giriş", "Öğle Başlangıç",
+            "Gün", "Durum", "Giriş", "Öğle Başlangıç",
             "Öğle Bitiş", "Çıkış"
         ])
         
-        # Sütun genişliklerini ayarla
-        self.days_table.setColumnCount(5)
+        # Tablo başlıklarını daha okunaklı hale getir
         header = self.days_table.horizontalHeader()
+        header.setStyleSheet("""
+            QHeaderView::section {
+                background-color: #4a86e8;
+                color: white;
+                font-weight: bold;
+                padding: 6px;
+                border: none;
+                font-size: 12px;
+            }
+        """)
+        
+        # Sütun genişliklerini ayarla
+        self.days_table.setColumnCount(6)
         
         # Tarih sütunu sabit genişlikte
-        self.days_table.setColumnWidth(0, 180)
+        self.days_table.setColumnWidth(0, 120)
+        self.days_table.setColumnWidth(1, 60)
         
         # Diğer sütunlar eşit genişlikte
-        for col in range(1, 5):
+        for col in range(2, 6):
             self.days_table.setColumnWidth(col, 110)
         
         # Sütun modlarını ayarla
         header.setSectionResizeMode(0, QHeaderView.Fixed)  # Tarih sütunu sabit
-        for col in range(1, 5):
+        header.setSectionResizeMode(1, QHeaderView.Fixed)  # Durum sütunu sabit
+        for col in range(2, 6):
             header.setSectionResizeMode(col, QHeaderView.Fixed)  # Saat sütunları sabit
         
         # Günleri tabloya ekle
         for row in range(7):
-            current_day = start_of_week.addDays(row)
+            current_day = current_week_start.addDays(row)
+            day_name = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"][row]
             is_weekend = current_day.dayOfWeek() in [6, 7]  # 6=Cumartesi, 7=Pazar
             
-            # Gün hücresi - Sadece gün adını göster
-            gun_adi = turkce_gunler[row]
-            day_item = QTableWidgetItem(gun_adi)
-            day_item.setData(Qt.UserRole, current_day)  # Tam tarihi UserRole'da sakla
-            day_item.setFlags(day_item.flags() & ~Qt.ItemIsEditable)
+            # Gün hücresi - Sadece gün adını göster (tarih olmadan)
+            day_item = QTableWidgetItem(day_name)
+            day_item.setData(Qt.UserRole, current_day)  # Tarih verisini sakla
+            day_item.setFlags(day_item.flags() & ~Qt.ItemIsEditable)  # Düzenlenemez yap
             day_item.setTextAlignment(Qt.AlignCenter)
             self.days_table.setItem(row, 0, day_item)
             
+            # Durum hücresi
+            status_checkbox = QCheckBox()
+            status_checkbox.setChecked(True)
+            status_checkbox.stateChanged.connect(lambda state, r=row: self.on_day_status_changed(r))
+            self.days_table.setCellWidget(row, 1, status_checkbox)
+            self.day_status_checkboxes.append(status_checkbox)
+            
             # Saat hücreleri
-            for col, default_time in enumerate(default_times, start=1):
+            for col, default_time in enumerate([default_entry, default_lunch_start, default_lunch_end, default_exit], start=2):
                 time_edit = QTimeEdit()
                 time_edit.setDisplayFormat("HH:mm")
                 time_edit.setTime(default_time)
                 time_edit.timeChanged.connect(lambda time, r=row: self.on_time_changed(r))
-                time_edit.setAlignment(Qt.AlignCenter)
-                time_edit.setStyleSheet("padding: 2px;")
+                time_edit.setStyleSheet("QTimeEdit { padding: 4px; }")
                 self.days_table.setCellWidget(row, col, time_edit)
             
             # Hafta sonu günlerini gri yap
             if is_weekend:
-                for col in range(5):
+                for col in range(6):
                     item = self.days_table.item(row, col)
                     if item:
                         item.setBackground(QColor("#f0f0f0"))
                     widget = self.days_table.cellWidget(row, col)
                     if widget:
-                        widget.setStyleSheet("background-color: #f0f0f0; padding: 2px;")
+                        effect = QGraphicsOpacityEffect(widget)
+                        effect.setOpacity(0.7)
+                        widget.setGraphicsEffect(effect)
         
-        # Satır yüksekliğini ayarla
-        for row in range(7):
-            self.days_table.setRowHeight(row, 30)
-            
-        # Veritabanından kayıtlı günleri yükle
-        self.load_saved_records()
+        # Kaydedilmiş kayıtları yükle
+        if self.current_employee_id:
+            self.load_saved_records()
+            self.calculate_total_hours()  # Toplamları güncelle
     
+    def on_day_status_changed(self, row):
+        """Durum değiştiğinde çağrılır"""
+        self.changes_pending = True  # Değişiklik bayrağını işaretle
+        self.calculate_total_hours()  # Sadece toplamları güncelle
+    
+    def calculate_total_hours(self):
+        """Toplam çalışma saatlerini hesaplar"""
+        if not self.current_employee_id:
+            return
+            
+        # Çalışanın haftalık ücretini al
+        cursor = self.db.conn.cursor()
+        cursor.execute('''
+            SELECT weekly_salary, daily_food, daily_transport 
+            FROM employees 
+            WHERE id=?
+        ''', (self.current_employee_id,))
+        employee = cursor.fetchone()
+        
+        if not employee:
+            return
+            
+        weekly_salary, daily_food, daily_transport = employee
+        
+        # Toplam çalışma süresini ve aktif gün sayısını hesapla
+        total_minutes = 0
+        active_days = 0
+        
+        for row in range(7):
+            # Geçerli günü al
+            date_item = self.days_table.item(row, 0)
+            if not date_item:
+                continue
+                
+            current_day = date_item.data(Qt.UserRole)
+            is_weekend = current_day.dayOfWeek() in [6, 7]  # 6=Cumartesi, 7=Pazar
+            
+            # Zamanları al
+            entry_widget = self.days_table.cellWidget(row, 2)
+            lunch_start_widget = self.days_table.cellWidget(row, 3)
+            lunch_end_widget = self.days_table.cellWidget(row, 4)
+            exit_widget = self.days_table.cellWidget(row, 5)
+            
+            if entry_widget and lunch_start_widget and lunch_end_widget and exit_widget:
+                # Checkbox kontrolü
+                is_active = True
+                if row < len(self.day_status_checkboxes):
+                    is_active = self.day_status_checkboxes[row].isChecked()
+                
+                if is_active:
+                    # Aktif gün sayısını artır
+                    active_days += 1
+                    
+                    # Sabah vardiyası süresi (dakika)
+                    morning_minutes = entry_widget.time().secsTo(lunch_start_widget.time()) / 60
+                    
+                    # Öğleden sonra vardiyası süresi (dakika)
+                    afternoon_minutes = lunch_end_widget.time().secsTo(exit_widget.time()) / 60
+                    
+                    # Günlük toplamı ekle
+                    total_minutes += morning_minutes + afternoon_minutes
+        
+        # Toplam süreyi saat cinsine çevir
+        total_hours = total_minutes / 60
+        
+        # Toplam değerleri hesapla
+        work_salary = weekly_salary
+        food_total = daily_food * active_days
+        transport_total = daily_transport * active_days
+        total_amount = work_salary + food_total + transport_total
+        
+        # Değerleri görüntüle
+        self.total_hours_label.setText(f"{total_hours:.1f}")
+        self.weekly_salary_label.setText(self.format_currency(work_salary))
+        self.food_total_label.setText(self.format_currency(food_total))
+        self.transport_total_label.setText(self.format_currency(transport_total))
+        self.gross_total_label.setText(self.format_currency(total_amount))
+        
+        # Toplamları kaydet
+        self.current_totals = {
+            'total_hours': total_hours,
+            'work_salary': work_salary,
+            'transport_total': transport_total,
+            'food_total': food_total,
+            'total_amount': total_amount
+        }
+    
+    def auto_save_all(self):
+        """Değişiklikleri otomatik kaydeder"""
+        if not hasattr(self, 'changes_pending') or not self.changes_pending:
+            return
+            
+        if self.current_employee_id:
+            for row in range(7):
+                self.save_day_data(row)
+            
+            self.changes_pending = False
+            self.status_label.setText("Değişiklikler kaydedildi")
+            
+            # 3 saniye sonra durum mesajını temizle
+            QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+    
+    def save_day_data(self, row):
+        """Günlük veriyi kaydeder"""
+        if not self.current_employee_id:
+            return
+            
+        # Tarih bilgisini al
+        date_item = self.days_table.item(row, 0)
+        if not date_item:
+            return
+            
+        date = date_item.data(Qt.UserRole).toString("yyyy-MM-dd")
+        
+        # Saat verilerini al
+        entry_time = self.days_table.cellWidget(row, 2).time().toString("HH:mm")
+        lunch_start = self.days_table.cellWidget(row, 3).time().toString("HH:mm")
+        lunch_end = self.days_table.cellWidget(row, 4).time().toString("HH:mm")
+        exit_time = self.days_table.cellWidget(row, 5).time().toString("HH:mm")
+        
+        # Veritabanına kaydet
+        self.db.add_work_record(
+            self.current_employee_id,
+            date,
+            entry_time,
+            lunch_start,
+            lunch_end,
+            exit_time
+        )
+        
     def load_saved_records(self):
         """Veritabanından kayıtlı günleri yükler"""
         cursor = self.db.conn.cursor()
@@ -613,7 +719,7 @@ class TimeTrackingForm(QWidget):
                 date_item = self.days_table.item(row, 0)
                 if date_item and date_item.data(Qt.UserRole).toString("yyyy-MM-dd") == date.toString("yyyy-MM-dd"):
                     # Saatleri ayarla
-                    for col, time_str in enumerate(record[1:], start=1):
+                    for col, time_str in enumerate(record[1:], start=2):
                         time_widget = self.days_table.cellWidget(row, col)
                         if time_widget:
                             time = QTime.fromString(time_str, "HH:mm")
@@ -625,68 +731,21 @@ class TimeTrackingForm(QWidget):
         self.changes_pending = True  # Değişiklik bayrağını işaretle
         self.calculate_total_hours()  # Sadece toplamları güncelle
     
-    def save_day_data(self, row):
-        """Günlük veriyi kaydeder"""
-        if not self.current_employee_id:
-            return
-            
-        # Tarih bilgisini al
-        date_item = self.days_table.item(row, 0)
-        if not date_item:
-            return
-            
-        date = date_item.data(Qt.UserRole).toString("yyyy-MM-dd")
+    def format_currency(self, value):
+        """Para birimini istenilen formata çevirir:
+        - Birler basamağı 5'e yuvarlanır
+        - Binlik ayırıcı eklenir (örn: 1.000)
+        - Ondalık kısmı olmaz
+        - TL ibaresi eklenir
+        """
+        # Birler basamağını 5'e yuvarla
+        rounded_value = round(value / 5) * 5
         
-        # Saat verilerini al
-        entry_time = self.days_table.cellWidget(row, 1).time().toString("HH:mm")
-        lunch_start = self.days_table.cellWidget(row, 2).time().toString("HH:mm")
-        lunch_end = self.days_table.cellWidget(row, 3).time().toString("HH:mm")
-        exit_time = self.days_table.cellWidget(row, 4).time().toString("HH:mm")
+        # Binlik ayırıcı ekle
+        formatted = f"{rounded_value:,.0f}".replace(",", ".")
         
-        # Veritabanına kaydet
-        self.db.add_work_record(
-            self.current_employee_id,
-            date,
-            entry_time,
-            lunch_start,
-            lunch_end,
-            exit_time
-        )
-    
-    def calculate_total_hours(self):
-        """Toplam çalışma saatlerini hesaplar"""
-        total_minutes = 0
-        
-        for row in range(7):
-            # Günlük çalışma süresini hesapla
-            entry_widget = self.days_table.cellWidget(row, 1)
-            lunch_start_widget = self.days_table.cellWidget(row, 2)
-            lunch_end_widget = self.days_table.cellWidget(row, 3)
-            exit_widget = self.days_table.cellWidget(row, 4)
-            
-            if entry_widget and lunch_start_widget and lunch_end_widget and exit_widget:
-                # Sabah mesaisi
-                morning_minutes = entry_widget.time().secsTo(lunch_start_widget.time()) / 60
-                # Öğleden sonra mesaisi
-                afternoon_minutes = lunch_end_widget.time().secsTo(exit_widget.time()) / 60
-                
-                total_minutes += morning_minutes + afternoon_minutes
-        
-        # Haftalık toplam süreyi güncelle
-        total_hours = total_minutes / 60
-        self.total_hours_label.setText(f"{total_hours:.1f}")
-    
-    def auto_save_all(self):
-        """Değişiklikleri otomatik kaydeder"""
-        if not self.changes_pending:  # Değişiklik yoksa kaydetme
-            return
-            
-        if self.current_employee_id:
-            for row in range(7):
-                # Günlük veriyi kaydet
-                self.save_day_data(row)
-            
-            self.changes_pending = False  # Değişiklik bayrağını sıfırla
+        # TL ibaresi ekle
+        return f"{formatted} TL"
 
 class MainWindow(QMainWindow):
     def __init__(self):
