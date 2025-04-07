@@ -758,22 +758,44 @@ class TimeTrackingForm(QWidget):
         return "{:,.0f}".format(rounded).replace(",", ".")
     
     def on_day_status_changed(self, row, state):
+        """Gün durumu değiştiğinde çağrılır"""
         is_active = state == Qt.Checked
-        # Saat widgetlarını aktif/pasif yap
-        for col in range(2, 6):
-            widget = self.days_table.cellWidget(row, col)
-            if isinstance(widget, QTimeEdit):
-                widget.setEnabled(is_active)
-                widget.setStyleSheet("" if is_active else "background-color: #f0f0f0;")
         
-        # Toplam hücresinin arka planını güncelle
+        # Saat widgetlarını aktif/pasif yap
+        for col in range(2, 6):  # Giriş, öğle başlangıç/bitiş, çıkış
+            time_widget = self.days_table.cellWidget(row, col)
+            if time_widget:
+                time_widget.setEnabled(is_active)
+        
+        # Toplam süreyi güncelle
         total_item = self.days_table.item(row, 6)
         if total_item:
-            total_item.setBackground(QColor("#ffffff") if is_active else QColor("#f0f0f0"))
             if not is_active:
                 total_item.setText("--:--")
+                # Veritabanından günü sil
+                if self.current_employee_id:
+                    cursor = self.db.conn.cursor()
+                    cursor.execute('''
+                        DELETE FROM work_records 
+                        WHERE employee_id = ? AND date = ?
+                    ''', (self.current_employee_id, self.days_table.item(row, 1).data(Qt.UserRole)))
+                    self.db.conn.commit()
             else:
-                total_item.setText("10:00")  # Aktif olduğunda varsayılan değer
+                # Varsayılan değerleri ayarla
+                entry_widget = self.days_table.cellWidget(row, 2)
+                lunch_start_widget = self.days_table.cellWidget(row, 3)
+                lunch_end_widget = self.days_table.cellWidget(row, 4)
+                exit_widget = self.days_table.cellWidget(row, 5)
+                
+                if entry_widget and lunch_start_widget and lunch_end_widget and exit_widget:
+                    entry_widget.setTime(QTime(8, 0))
+                    lunch_start_widget.setTime(QTime(12, 0))
+                    lunch_end_widget.setTime(QTime(13, 0))
+                    exit_widget.setTime(QTime(18, 0))
+                    
+                    # Veritabanına varsayılan değerleri kaydet
+                    if self.current_employee_id:
+                        self.save_day_data(row)
         
         # Değişiklikten sonra toplamları güncelle
         self.calculate_total_hours()
