@@ -263,7 +263,6 @@ class EmployeeForm(QWidget):
             QTableWidget {
                 border: 1px solid #bdc3c7;
                 border-radius: 4px;
-                alternate-row-color: #f9f9f9;
                 gridline-color: #dcdcdc;
                 selection-background-color: #3498db;
                 selection-color: white;
@@ -463,7 +462,6 @@ class TimeTrackingForm(QWidget):
             QTableWidget {
                 border: 1px solid #bdc3c7;
                 border-radius: 4px;
-                alternate-row-color: #f9f9f9;
                 gridline-color: #dcdcdc;
                 selection-background-color: #3498db;
                 selection-color: white;
