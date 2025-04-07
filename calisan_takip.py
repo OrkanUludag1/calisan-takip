@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 import math
 
 class EmployeeDB:
-    def __init__(self):
-        self.conn = sqlite3.connect('employee_tracking.db')
+    def __init__(self, db_name='employee_tracking.db'):
+        self.conn = sqlite3.connect(db_name)
         self.create_tables()
     
     def create_tables(self):
