@@ -439,6 +439,7 @@ class TimeTrackingForm(QWidget):
         end_date = self.current_date.addDays(6)
         
         date_label = QLabel(f"<b>Tarih Aralığı:</b> {start_date.toString('dd.MM.yyyy')} - {end_date.toString('dd.MM.yyyy')}")
+        date_label.setStyleSheet("color: #495057;")
         date_range_layout.addWidget(date_label)
         layout.addWidget(self.date_range_group)
         
@@ -452,37 +453,14 @@ class TimeTrackingForm(QWidget):
                 border-radius: 5px;
                 margin-top: 5px;
                 padding-top: 15px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top center;
                 padding: 0 10px;
-                background-color: #f9f9f9;
-            }
-            QTableWidget {
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                gridline-color: #dcdcdc;
-                selection-background-color: #3498db;
-                selection-color: white;
-            }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                padding: 6px;
-                border: 1px solid #dcdcdc;
-                border-bottom-width: 2px;
-                border-bottom-color: #bdc3c7;
-                font-weight: bold;
-            }
-            QTimeEdit {
-                padding: 4px;
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QTimeEdit:focus {
-                border: 1px solid #3498db;
-                background-color: #f0f8ff;
+                background-color: #e9ecef;
+                color: #495057;
             }
         """)
         
@@ -504,6 +482,7 @@ class TimeTrackingForm(QWidget):
         table_group.setStyleSheet("""
             background-color: #ffffff;
             border-radius: 5px;
+            border: 1px solid #bdc3c7;
             padding: 5px;
         """)
         table_layout = QVBoxLayout(table_group)
@@ -516,6 +495,7 @@ class TimeTrackingForm(QWidget):
         summary_group.setStyleSheet("""
             background-color: #ffffff;
             border-radius: 5px;
+            border: 1px solid #bdc3c7;
             padding: 10px;
         """)
         summary_layout = QVBoxLayout(summary_group)
@@ -525,7 +505,9 @@ class TimeTrackingForm(QWidget):
         hours_layout.setContentsMargins(0, 0, 0, 0)
         hours_layout.setSpacing(0)
         hours_title = QLabel("Çalışma Saati")
+        hours_title.setStyleSheet("color: #495057; font-weight: bold;")
         self.total_hours_label = QLabel("0.0")
+        self.total_hours_label.setStyleSheet("color: #212529; font-size: 14px;")
         hours_layout.addWidget(hours_title)
         hours_layout.addWidget(self.total_hours_label)
         
@@ -534,7 +516,9 @@ class TimeTrackingForm(QWidget):
         salary_layout.setContentsMargins(0, 0, 0, 0)
         salary_layout.setSpacing(0)
         salary_title = QLabel("Haftalık Ücret")
+        salary_title.setStyleSheet("color: #495057; font-weight: bold;")
         self.weekly_salary_label = QLabel("0 TL")
+        self.weekly_salary_label.setStyleSheet("color: #212529; font-size: 14px;")
         salary_layout.addWidget(salary_title)
         salary_layout.addWidget(self.weekly_salary_label)
         
@@ -543,7 +527,9 @@ class TimeTrackingForm(QWidget):
         transport_layout.setContentsMargins(0, 0, 0, 0)
         transport_layout.setSpacing(0)
         transport_title = QLabel("Yol Ücreti")
+        transport_title.setStyleSheet("color: #495057; font-weight: bold;")
         self.transport_total_label = QLabel("0 TL")
+        self.transport_total_label.setStyleSheet("color: #212529; font-size: 14px;")
         transport_layout.addWidget(transport_title)
         transport_layout.addWidget(self.transport_total_label)
         
@@ -552,7 +538,9 @@ class TimeTrackingForm(QWidget):
         food_layout.setContentsMargins(0, 0, 0, 0)
         food_layout.setSpacing(0)
         food_title = QLabel("Yemek Ücreti")
+        food_title.setStyleSheet("color: #495057; font-weight: bold;")
         self.food_total_label = QLabel("0 TL")
+        self.food_total_label.setStyleSheet("color: #212529; font-size: 14px;")
         food_layout.addWidget(food_title)
         food_layout.addWidget(self.food_total_label)
         
@@ -561,7 +549,9 @@ class TimeTrackingForm(QWidget):
         total_layout.setContentsMargins(0, 0, 0, 0)
         total_layout.setSpacing(0)
         total_title = QLabel("Toplam")
+        total_title.setStyleSheet("color: #495057; font-weight: bold;")
         self.gross_total_label = QLabel("0 TL")
+        self.gross_total_label.setStyleSheet("color: #212529; font-size: 14px;")
         total_layout.addWidget(total_title)
         total_layout.addWidget(self.gross_total_label)
         
@@ -902,34 +892,92 @@ class MainWindow(QMainWindow):
     def initUI(self):
         self.setWindowTitle("Çalışan Takip Sistemi")
         self.setGeometry(100, 100, 1200, 700)
+        
+        # Genel stil tanımlamaları
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #f5f5f5;
+                background-color: #f8f9fa;
             }
-            QTabWidget {
-                background-color: white;
+            QLabel {
+                color: #495057;
+            }
+            QPushButton {
+                background-color: #e9ecef;
+                color: #495057;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #dee2e6;
+                border-color: #6c757d;
+            }
+            QPushButton:pressed {
+                background-color: #ced4da;
+            }
+            QTableWidget {
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                gridline-color: #dcdcdc;
+                selection-background-color: #6c757d;
+                selection-color: white;
+            }
+            QHeaderView::section {
+                background-color: #e9ecef;
+                color: #495057;
+                padding: 6px;
+                border: 1px solid #dcdcdc;
+                font-weight: bold;
             }
             QTabWidget::pane {
                 border: 1px solid #bdc3c7;
+                border-radius: 4px;
                 background-color: white;
-                border-radius: 5px;
             }
             QTabBar::tab {
-                background-color: #ecf0f1;
+                background-color: #e9ecef;
+                color: #495057;
                 border: 1px solid #bdc3c7;
                 border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
-                padding: 8px 12px;
+                padding: 6px 10px;
                 margin-right: 2px;
-                font-weight: bold;
             }
             QTabBar::tab:selected {
                 background-color: white;
-                border-bottom: 1px solid white;
+                border-bottom: none;
+                padding-bottom: 8px;
             }
-            QTabBar::tab:hover:!selected {
-                background-color: #d6d9dc;
+            QLineEdit, QTimeEdit, QComboBox {
+                padding: 6px;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                background-color: white;
+                color: #212529;
+            }
+            QLineEdit:focus, QTimeEdit:focus, QComboBox:focus {
+                border: 1px solid #6c757d;
+                background-color: #f8f9fa;
+            }
+            QCheckBox {
+                color: #495057;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #bdc3c7;
+                border-radius: 3px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #6c757d;
+                border: 1px solid #495057;
+            }
+            QFrame {
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                background-color: white;
             }
         """)
         
