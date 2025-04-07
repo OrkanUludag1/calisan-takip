@@ -1,257 +1,313 @@
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, 
-    QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView
+    QWidget, QVBoxLayout, QFormLayout, QDialog,
+    QLineEdit, QTableWidget, QTableWidgetItem,
+    QHeaderView, QCheckBox, QMenu, QMessageBox,
+    QPushButton, QHBoxLayout
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QBrush, QFont
 
 from models.database import EmployeeDB
 from utils.helpers import format_currency
 
+class EmployeeDialog(QDialog):
+    """Çalışan bilgilerini düzenlemek için dialog penceresi"""
+    def __init__(self, parent=None, employee=None):
+        super().__init__(parent)
+        self.employee = employee
+        self.initUI()
+        
+    def initUI(self):
+        """Dialog penceresini hazırlar"""
+        self.setWindowTitle("Çalışan Bilgileri")
+        self.setModal(True)
+        layout = QVBoxLayout(self)
+        
+        # Form alanları
+        form_layout = QFormLayout()
+        
+        self.name_input = QLineEdit()
+        self.weekly_salary_input = QLineEdit()
+        self.daily_food_input = QLineEdit()
+        self.daily_transport_input = QLineEdit()
+        
+        form_layout.addRow("İsim:", self.name_input)
+        form_layout.addRow("Haftalık Ücret:", self.weekly_salary_input)
+        form_layout.addRow("Günlük Yemek:", self.daily_food_input)
+        form_layout.addRow("Günlük Yol:", self.daily_transport_input)
+        
+        # Eğer çalışan varsa bilgileri doldur
+        if self.employee:
+            self.name_input.setText(self.employee[1])
+            self.weekly_salary_input.setText(str(self.employee[2]))
+            self.daily_food_input.setText(str(self.employee[3]))
+            self.daily_transport_input.setText(str(self.employee[4]))
+        
+        # Butonlar
+        button_layout = QHBoxLayout()
+        save_btn = QPushButton("Kaydet")
+        cancel_btn = QPushButton("İptal")
+        
+        save_btn.clicked.connect(self.accept)
+        cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addWidget(save_btn)
+        button_layout.addWidget(cancel_btn)
+        
+        # Layout'ları birleştir
+        layout.addLayout(form_layout)
+        layout.addLayout(button_layout)
+        
+        # Pencere boyutunu ayarla
+        self.setFixedWidth(300)
+    
+    def get_values(self):
+        """Form değerlerini döndürür"""
+        try:
+            return {
+                'name': self.name_input.text().strip(),
+                'weekly_salary': float(self.weekly_salary_input.text()),
+                'daily_food': float(self.daily_food_input.text()),
+                'daily_transport': float(self.daily_transport_input.text())
+            }
+        except ValueError:
+            return None
+
 class EmployeeForm(QWidget):
-    """Çalışan yönetimi formu"""
+    employee_selected = pyqtSignal(int, str)  # id, name
     
-    # Çalışan seçildiğinde veya eklendiğinde sinyal gönder
-    employee_selected = pyqtSignal(int, str)
-    
-    def __init__(self, db):
-        super().__init__()
-        self.db = db
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.db = EmployeeDB()
         self.current_employee_id = None
         self.initUI()
     
     def initUI(self):
-        main_layout = QVBoxLayout()
-        main_layout.setSpacing(15)
+        """Kullanıcı arayüzünü başlatır"""
+        layout = QVBoxLayout(self)
         
-        # Form alanları - düz layout içinde artık
-        form_layout = QFormLayout()
-        form_layout.setSpacing(12)
-        form_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-        
-        self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Çalışan Adı")
-        self.name_edit.setMinimumHeight(30)
-        form_layout.addRow("", self.name_edit)
-        
-        self.weekly_salary_edit = QLineEdit()
-        self.weekly_salary_edit.setPlaceholderText("Haftalık Ücret")
-        self.weekly_salary_edit.setMinimumHeight(30)
-        form_layout.addRow("", self.weekly_salary_edit)
-        
-        self.daily_food_edit = QLineEdit()
-        self.daily_food_edit.setPlaceholderText("Günlük Yemek Ücreti")
-        self.daily_food_edit.setMinimumHeight(30)
-        form_layout.addRow("", self.daily_food_edit)
-        
-        self.daily_transport_edit = QLineEdit()
-        self.daily_transport_edit.setPlaceholderText("Günlük Yol Ücreti")
-        self.daily_transport_edit.setMinimumHeight(30)
-        form_layout.addRow("", self.daily_transport_edit)
-        
-        main_layout.addLayout(form_layout)
-        
-        # Butonlar
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
-        button_layout.setContentsMargins(0, 15, 0, 15)
-        
-        self.add_btn = QPushButton("Ekle")
-        self.add_btn.setMinimumHeight(40)
-        self.add_btn.clicked.connect(self.add_employee)
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
-            }
-            QPushButton:pressed {
-                background-color: #229954;
-            }
-        """)
-        button_layout.addWidget(self.add_btn)
-        
-        self.update_btn = QPushButton("Güncelle")
-        self.update_btn.setMinimumHeight(40)
-        self.update_btn.clicked.connect(self.update_employee)
-        self.update_btn.setEnabled(False)
-        self.update_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #1c6ea4;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-                color: #7f8c8d;
-            }
-        """)
-        button_layout.addWidget(self.update_btn)
-        
-        self.clear_btn = QPushButton("Temizle")
-        self.clear_btn.setMinimumHeight(40)
-        self.clear_btn.clicked.connect(self.clear_form)
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:pressed {
-                background-color: #a93226;
-            }
-        """)
-        button_layout.addWidget(self.clear_btn)
-        
-        main_layout.addLayout(button_layout)
-        
-        # Çalışan listesi - artık doğrudan ekleniyor, grup kutusu içinde değil
+        # Çalışan listesi
         self.employee_list = QTableWidget()
         self.employee_list.setColumnCount(4)
-        self.employee_list.setHorizontalHeaderLabels(["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"])
+        
+        # Başlıkları gizle
+        self.employee_list.verticalHeader().setVisible(False)
+        self.employee_list.horizontalHeader().setVisible(False)
+        
+        # İlk satırı başlık olarak ayarla
+        self.employee_list.insertRow(0)
+        headers = ["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"]
+        
+        for col, header in enumerate(headers):
+            item = QTableWidgetItem(header)
+            item.setBackground(QColor("#34495e"))
+            item.setForeground(QBrush(QColor("white")))
+            item.setFont(QFont("", -1, QFont.Bold))
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable & ~Qt.ItemIsSelectable)
+            item.setTextAlignment(Qt.AlignCenter)
+            self.employee_list.setItem(0, col, item)
+        
+        # Sütun genişliklerini ayarla
+        self.employee_list.setColumnWidth(0, 200)  # İsim sütunu
+        for i in range(1, 4):  # Ücret sütunları
+            self.employee_list.setColumnWidth(i, 150)
+        
         self.employee_list.setSelectionBehavior(QTableWidget.SelectRows)
         self.employee_list.setSelectionMode(QTableWidget.SingleSelection)
-        self.employee_list.itemDoubleClicked.connect(self.select_employee)
-        self.employee_list.verticalHeader().setVisible(False)  # Satır numaralarını gizle
-        self.employee_list.setAlternatingRowColors(True)
         
-        # Tüm sütunları eşit genişlikte ayarla
-        header = self.employee_list.horizontalHeader()
-        for i in range(4):
-            header.setSectionResizeMode(i, QHeaderView.Stretch)
+        # Çift tıklama ile düzenleme
+        self.employee_list.doubleClicked.connect(self.edit_employee)
         
-        main_layout.addWidget(self.employee_list)
+        # Sağ tık menüsü için context menu event'i ekle
+        self.employee_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.employee_list.customContextMenuRequested.connect(self.show_context_menu)
         
-        self.setLayout(main_layout)
+        # Layout'ları birleştir
+        layout.addWidget(self.employee_list)
         
-        # Veriyi yükle
+        # Çalışanları yükle
         self.load_employees()
     
-    def format_currency(self, value):
-        """Para birimini formatlar"""
-        return format_currency(value)
+    def show_context_menu(self, position):
+        """Sağ tık menüsünü gösterir"""
+        # Seçili satırı al
+        row = self.employee_list.rowAt(position.y())
+        
+        # Menüyü oluştur
+        menu = QMenu()
+        
+        # Yeni çalışan ekleme seçeneği
+        new_action = menu.addAction("➕ Yeni Çalışan")
+        
+        # Eğer bir çalışan seçili değilse sadece yeni çalışan seçeneğini göster
+        if row < 0 or row == 0:  # Başlık satırı veya boş alan
+            action = menu.exec_(self.employee_list.viewport().mapToGlobal(position))
+            if action == new_action:
+                self.add_employee()
+            return
+        
+        # Seçili çalışanın bilgilerini al
+        name_item = self.employee_list.item(row, 0)  # İsim sütunu
+        if not name_item:
+            return
+        
+        employee_id = name_item.data(Qt.UserRole)
+        is_active = name_item.data(Qt.UserRole + 1)
+        if not employee_id:
+            return
+        
+        # Diğer menü öğelerini ekle
+        menu.addSeparator()
+        status_action = menu.addAction("🔴 Pasif Yap" if is_active else "🟢 Aktif Yap")
+        menu.addSeparator()
+        edit_action = menu.addAction("✏️ Düzenle")
+        delete_action = menu.addAction("🗑️ Sil")
+        
+        # Menü stilini ayarla
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 25px;
+                border-radius: 2px;
+            }
+            QMenu::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #bdc3c7;
+                margin: 5px 15px;
+            }
+        """)
+        
+        # Seçilen işlemi gerçekleştir
+        action = menu.exec_(self.employee_list.viewport().mapToGlobal(position))
+        
+        if action == new_action:
+            self.add_employee()
+        
+        elif action == status_action:
+            # Aktif/Pasif durumunu değiştir
+            new_status = 0 if is_active else 1
+            self.db.update_employee_status(employee_id, new_status)
+            self.load_employees()
+        
+        elif action == edit_action:
+            self.edit_employee(employee_id=employee_id)
+        
+        elif action == delete_action:
+            # Silme onayı iste
+            reply = QMessageBox.question(
+                self, 
+                'Çalışanı Sil',
+                f'"{name_item.text()}" isimli çalışanı silmek istediğinize emin misiniz?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                # Çalışanı sil
+                self.db.delete_employee(employee_id)
+                self.load_employees()
     
     def add_employee(self):
         """Yeni çalışan ekler"""
-        name = self.name_edit.text().strip()
-        weekly_salary = self.weekly_salary_edit.text().strip()
-        daily_food = self.daily_food_edit.text().strip()
-        daily_transport = self.daily_transport_edit.text().strip()
-        
-        if not name:
-            return
-        
-        try:
-            weekly_salary = float(weekly_salary) if weekly_salary else 0
-            daily_food = float(daily_food) if daily_food else 0
-            daily_transport = float(daily_transport) if daily_transport else 0
-            
-            employee_id = self.db.add_employee(name, weekly_salary, daily_food, daily_transport)
-            self.clear_form()
-            self.load_employees()
-            
-            # Yeni çalışan eklendiğinde sinyal gönder
-            self.employee_selected.emit(employee_id, name)
-        except ValueError:
-            pass
+        dialog = EmployeeDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            values = dialog.get_values()
+            if values:
+                employee_id = self.db.add_employee(
+                    values['name'],
+                    values['weekly_salary'],
+                    values['daily_food'],
+                    values['daily_transport']
+                )
+                
+                if employee_id is False:
+                    # Aynı isimde çalışan var
+                    QMessageBox.warning(
+                        self,
+                        "Çalışan Eklenemedi",
+                        f"\"{values['name']}\" isimli çalışan zaten mevcut. Lütfen farklı bir isim giriniz.",
+                        QMessageBox.Ok
+                    )
+                    return
+                
+                self.employee_selected.emit(employee_id, values['name'])
+                self.load_employees()
     
-    def update_employee(self):
-        """Çalışan bilgilerini günceller"""
-        if not self.current_employee_id:
+    def edit_employee(self, item=None, employee_id=None):
+        """Çalışan bilgilerini düzenler"""
+        if item and item.row() == 0:  # Başlık satırı
             return
-        
-        name = self.name_edit.text().strip()
-        weekly_salary = self.weekly_salary_edit.text().strip()
-        daily_food = self.daily_food_edit.text().strip()
-        daily_transport = self.daily_transport_edit.text().strip()
-        
-        if not name:
-            return
-        
-        try:
-            weekly_salary = float(weekly_salary) if weekly_salary else 0
-            daily_food = float(daily_food) if daily_food else 0
-            daily_transport = float(daily_transport) if daily_transport else 0
             
-            self.db.update_employee(
-                self.current_employee_id, name, weekly_salary, daily_food, daily_transport
-            )
-            self.clear_form()
-            self.load_employees()
-        except ValueError:
-            pass
-    
-    def clear_form(self):
-        """Form alanlarını temizler"""
-        self.name_edit.clear()
-        self.weekly_salary_edit.clear()
-        self.daily_food_edit.clear()
-        self.daily_transport_edit.clear()
-        self.current_employee_id = None
-        self.update_btn.setEnabled(False)
-        self.add_btn.setEnabled(True)
-    
-    def select_employee(self, item):
-        """Tablodan çalışan seçer"""
-        row = item.row()
-        employee_id = self.employee_list.item(row, 0).data(Qt.UserRole)
+        if item and not employee_id:
+            row = item.row()
+            employee_id = self.employee_list.item(row, 0).data(Qt.UserRole)
         
-        employee = self.db.get_employee(employee_id)
-        if employee:
-            self.current_employee_id = employee_id
-            self.name_edit.setText(employee[1])
-            self.weekly_salary_edit.setText(str(employee[2]))
-            self.daily_food_edit.setText(str(employee[3]))
-            self.daily_transport_edit.setText(str(employee[4]))
-            self.update_btn.setEnabled(True)
-            self.add_btn.setEnabled(False)
-            self.employee_selected.emit(employee_id, employee[1])  # Sinyal gönder
+        if employee_id:
+            employee = self.db.get_employee(employee_id)
+            if employee:
+                dialog = EmployeeDialog(self, employee)
+                if dialog.exec_() == QDialog.Accepted:
+                    values = dialog.get_values()
+                    if values:
+                        self.db.update_employee(
+                            employee_id,
+                            values['name'],
+                            values['weekly_salary'],
+                            values['daily_food'],
+                            values['daily_transport']
+                        )
+                        self.load_employees()
     
     def load_employees(self):
         """Çalışanları tabloya yükler"""
-        self.employee_list.setRowCount(0)
+        # Başlık satırını koru, diğerlerini temizle
+        while self.employee_list.rowCount() > 1:
+            self.employee_list.removeRow(1)
         
         employees = self.db.get_employees()
         
-        for i, employee in enumerate(employees):
-            employee_id, name, weekly_salary, daily_food, daily_transport = employee
+        for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
+            row = self.employee_list.rowCount()
+            self.employee_list.insertRow(row)
             
-            self.employee_list.insertRow(i)
-            
+            # İsim hücresine ID'yi ve aktif durumunu gizli veri olarak ekle
             name_item = QTableWidgetItem(name)
             name_item.setData(Qt.UserRole, employee_id)
+            name_item.setData(Qt.UserRole + 1, is_active)
             
-            # Tüm öğeleri oluştur ve ortala
-            items = [
-                name_item,
-                QTableWidgetItem(self.format_currency(weekly_salary)),
-                QTableWidgetItem(self.format_currency(daily_food)),
-                QTableWidgetItem(self.format_currency(daily_transport))
-            ]
+            # Diğer verileri ekle
+            salary_item = QTableWidgetItem(self.format_currency(weekly_salary))
+            food_item = QTableWidgetItem(self.format_currency(daily_food))
+            transport_item = QTableWidgetItem(self.format_currency(daily_transport))
             
-            # Tüm öğeleri ekle ve ortala
-            for col, item in enumerate(items):
-                item.setTextAlignment(Qt.AlignCenter)  # Metni ortala
-                self.employee_list.setItem(i, col, item)
+            # Hücreleri tabloya ekle
+            self.employee_list.setItem(row, 0, name_item)
+            self.employee_list.setItem(row, 1, salary_item)
+            self.employee_list.setItem(row, 2, food_item)
+            self.employee_list.setItem(row, 3, transport_item)
+            
+            # Hücreleri ortala ve düzenle
+            items = [name_item, salary_item, food_item, transport_item]
+            for item in items:
+                item.setTextAlignment(Qt.AlignCenter)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                
+                # Pasif çalışanları soluk göster
+                if not is_active:
+                    font = item.font()
+                    font.setItalic(True)
+                    item.setFont(font)
+                    item.setForeground(QBrush(QColor("#999999")))
+
+    def format_currency(self, value):
+        """Para birimini formatlar"""
+        return f"{value:,.2f} ₺".replace(",", ".")
