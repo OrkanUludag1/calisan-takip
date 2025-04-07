@@ -103,6 +103,26 @@ class EmployeeForm(QWidget):
         self.current_id = None  # Düzenlenen çalışanın ID'si
         self.initUI()
     
+    def format_currency(self, value):
+        """Para birimini istenilen formata çevirir:
+        - Birler basamağı 5'e yuvarlanır
+        - Binlik ayırıcı eklenir (örn: 1.000)
+        - Ondalık kısmı olmaz
+        - TL ibaresi eklenir
+        """
+        try:
+            value = float(value)
+            # Birler basamağını 5'e yuvarla
+            rounded_value = round(value / 5) * 5
+            
+            # Binlik ayırıcı ekle
+            formatted = f"{rounded_value:,.0f}".replace(",", ".")
+            
+            # TL ibaresi ekle
+            return f"{formatted} TL"
+        except (ValueError, TypeError):
+            return "0 TL"
+    
     def initUI(self):
         main_layout = QVBoxLayout()
         main_layout.setSpacing(15)
@@ -115,22 +135,22 @@ class EmployeeForm(QWidget):
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Çalışan Adı")
         self.name_edit.setMinimumHeight(30)
-        form_layout.addRow("<b>İsim:</b>", self.name_edit)
+        form_layout.addRow("", self.name_edit)
         
         self.weekly_salary_edit = QLineEdit()
         self.weekly_salary_edit.setPlaceholderText("Haftalık Ücret")
         self.weekly_salary_edit.setMinimumHeight(30)
-        form_layout.addRow("<b>Haftalık Ücret:</b>", self.weekly_salary_edit)
+        form_layout.addRow("", self.weekly_salary_edit)
         
         self.daily_food_edit = QLineEdit()
         self.daily_food_edit.setPlaceholderText("Günlük Yemek Ücreti")
         self.daily_food_edit.setMinimumHeight(30)
-        form_layout.addRow("<b>Günlük Yemek:</b>", self.daily_food_edit)
+        form_layout.addRow("", self.daily_food_edit)
         
         self.daily_transport_edit = QLineEdit()
         self.daily_transport_edit.setPlaceholderText("Günlük Yol Ücreti")
         self.daily_transport_edit.setMinimumHeight(30)
-        form_layout.addRow("<b>Günlük Yol:</b>", self.daily_transport_edit)
+        form_layout.addRow("", self.daily_transport_edit)
         
         main_layout.addLayout(form_layout)
         
@@ -215,10 +235,14 @@ class EmployeeForm(QWidget):
         self.employee_list.setHorizontalHeaderLabels(["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"])
         self.employee_list.setSelectionBehavior(QTableWidget.SelectRows)
         self.employee_list.setSelectionMode(QTableWidget.SingleSelection)
-        self.employee_list.itemDoubleClicked.connect(self.edit_employee)
+        self.employee_list.itemDoubleClicked.connect(self.select_employee)
         self.employee_list.verticalHeader().setVisible(False)  # Satır numaralarını gizle
         self.employee_list.setAlternatingRowColors(True)
-        self.employee_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # İsim sütunu esnek
+        
+        # Tüm sütunları eşit genişlikte ayarla
+        header = self.employee_list.horizontalHeader()
+        for i in range(4):
+            header.setSectionResizeMode(i, QHeaderView.Stretch)
         
         main_layout.addWidget(self.employee_list)
         
@@ -228,55 +252,85 @@ class EmployeeForm(QWidget):
         self.load_employees()
     
     def add_employee(self):
+        name = self.name_edit.text().strip()
+        weekly_salary_text = self.weekly_salary_edit.text().strip().replace("TL", "").replace(".", "").strip()
+        daily_food_text = self.daily_food_edit.text().strip().replace("TL", "").replace(".", "").strip()
+        daily_transport_text = self.daily_transport_edit.text().strip().replace("TL", "").replace(".", "").strip()
+        
+        if not name:
+            QMessageBox.warning(self, "Uyarı", "Lütfen çalışan adını girin.")
+            return
+        
         try:
-            name = self.name_edit.text().strip()
-            weekly_salary = float(self.weekly_salary_edit.text().replace(".", "").replace(",", "."))
-            daily_food = float(self.daily_food_edit.text().replace(".", "").replace(",", "."))
-            daily_transport = float(self.daily_transport_edit.text().replace(".", "").replace(",", "."))
-            
-            if not name:
-                QMessageBox.warning(self, "Uyarı", "İsim alanı boş olamaz!")
-                return
-            
-            if self.current_id is None:  # Yeni çalışan ekleme
-                self.db.add_employee(name, weekly_salary, daily_food, daily_transport)
-            else:  # Mevcut çalışanı güncelleme
-                cursor = self.db.conn.cursor()
-                cursor.execute('''
-                UPDATE employees 
-                SET name=?, weekly_salary=?, daily_food=?, daily_transport=?
-                WHERE id=?
-                ''', (name, weekly_salary, daily_food, daily_transport, self.current_id))
-                self.db.conn.commit()
-            
-            self.clear_form()
-            self.load_employees()
-            self.data_updated.emit()
-            
+            weekly_salary = float(weekly_salary_text)
+            daily_food = float(daily_food_text)
+            daily_transport = float(daily_transport_text)
         except ValueError:
-            QMessageBox.warning(self, "Uyarı", "Lütfen ücret alanlarına geçerli sayısal değerler girin!")
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli sayısal değerler girin.")
+            return
+        
+        employee_id = self.db.add_employee(name, weekly_salary, daily_food, daily_transport)
+        self.load_employees()
+        self.clear_form()
+        self.data_updated.emit()
+        QMessageBox.information(self, "Bilgi", f"{name} başarıyla eklendi.")
     
     def update_employee(self):
-        self.add_employee()  # Aynı fonksiyonu kullan ama current_id ile güncelleme yap
+        if not self.current_id:
+            QMessageBox.warning(self, "Uyarı", "Lütfen güncellenecek bir çalışan seçin.")
+            return
+            
+        name = self.name_edit.text().strip()
+        weekly_salary_text = self.weekly_salary_edit.text().strip().replace("TL", "").replace(".", "").strip()
+        daily_food_text = self.daily_food_edit.text().strip().replace("TL", "").replace(".", "").strip()
+        daily_transport_text = self.daily_transport_edit.text().strip().replace("TL", "").replace(".", "").strip()
+        
+        if not name:
+            QMessageBox.warning(self, "Uyarı", "Lütfen çalışan adını girin.")
+            return
+        
+        try:
+            weekly_salary = float(weekly_salary_text)
+            daily_food = float(daily_food_text)
+            daily_transport = float(daily_transport_text)
+        except ValueError:
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli sayısal değerler girin.")
+            return
+            
+        cursor = self.db.conn.cursor()
+        cursor.execute('''
+        UPDATE employees 
+        SET name=?, weekly_salary=?, daily_food=?, daily_transport=?
+        WHERE id=?
+        ''', (name, weekly_salary, daily_food, daily_transport, self.current_id))
+        self.db.conn.commit()
+        
+        self.load_employees()
+        self.clear_form()
+        self.data_updated.emit()
+        QMessageBox.information(self, "Bilgi", f"{name} başarıyla güncellendi.")
     
-    def edit_employee(self, item):
+    def select_employee(self, item):
         row = item.row()
-        employee_id = int(self.employee_list.item(row, 0).data(Qt.UserRole))
+        self.current_id = int(self.employee_list.item(row, 0).text())
         
         cursor = self.db.conn.cursor()
-        cursor.execute('SELECT name, weekly_salary, daily_food, daily_transport FROM employees WHERE id=?', (employee_id,))
-        employee = cursor.fetchone()
+        cursor.execute('''
+        SELECT name, weekly_salary, daily_food, daily_transport 
+        FROM employees WHERE id=?
+        ''', (self.current_id,))
         
+        employee = cursor.fetchone()
         if employee:
-            self.current_id = employee_id
-            self.name_edit.setText(employee[0])
-            self.weekly_salary_edit.setText(str(employee[1]))
-            self.daily_food_edit.setText(str(employee[2]))
-            self.daily_transport_edit.setText(str(employee[3]))
+            name, weekly_salary, daily_food, daily_transport = employee
             
-            self.add_btn.setVisible(False)
-            self.update_btn.setVisible(True)
-            self.clear_btn.setVisible(True)
+            self.name_edit.setText(name)
+            self.weekly_salary_edit.setText(str(weekly_salary))
+            self.daily_food_edit.setText(str(daily_food))
+            self.daily_transport_edit.setText(str(daily_transport))
+            
+            self.update_btn.setEnabled(True)
+            self.add_btn.setEnabled(False)
     
     def clear_form(self):
         self.current_id = None
@@ -285,31 +339,34 @@ class EmployeeForm(QWidget):
         self.daily_food_edit.clear()
         self.daily_transport_edit.clear()
         
-        self.add_btn.setVisible(True)
-        self.update_btn.setVisible(False)
-        self.clear_btn.setVisible(False)
+        self.add_btn.setEnabled(True)
+        self.update_btn.setEnabled(False)
     
     def load_employees(self):
         self.employee_list.setRowCount(0)
+        
         employees = self.db.get_employees()
         
-        for row, (emp_id, name, weekly_salary, daily_food, daily_transport) in enumerate(employees):
-            self.employee_list.insertRow(row)
+        for i, employee in enumerate(employees):
+            employee_id, name, weekly_salary, daily_food, daily_transport = employee
             
-            name_item = QTableWidgetItem(name.upper())
-            name_item.setData(Qt.UserRole, emp_id)
-            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)  # Düzenlemeyi devre dışı bırak
+            self.employee_list.insertRow(i)
             
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, employee_id)
+            
+            # Tüm öğeleri oluştur ve ortala
             items = [
                 name_item,
-                QTableWidgetItem(str(weekly_salary)),
-                QTableWidgetItem(str(daily_food)),
-                QTableWidgetItem(str(daily_transport))
+                QTableWidgetItem(self.format_currency(weekly_salary)),
+                QTableWidgetItem(self.format_currency(daily_food)),
+                QTableWidgetItem(self.format_currency(daily_transport))
             ]
             
-            # Tüm öğeleri ekle
+            # Tüm öğeleri ekle ve ortala
             for col, item in enumerate(items):
-                self.employee_list.setItem(row, col, item)
+                item.setTextAlignment(Qt.AlignCenter)  # Metni ortala
+                self.employee_list.setItem(i, col, item)
         
         self.employee_list.resizeColumnsToContents()
 
@@ -353,11 +410,12 @@ class TimeTrackingForm(QWidget):
         # Sol: Tablo, Sağ: Özetler
         main_layout = QHBoxLayout()
         
-        # Tarih aralığını göster
+        # Tarih aralığını göster (başlık olmadan)
         self.date_range_group = QFrame()
         self.date_range_group.setFrameShape(QFrame.StyledPanel)
         self.date_range_group.setStyleSheet("background-color: #f8f9fa; border-radius: 5px;")
         date_range_layout = QHBoxLayout(self.date_range_group)
+        date_range_layout.setAlignment(Qt.AlignCenter)  # Ortala
         
         # Current date'i Pazartesi olarak ayarla (haftanın başlangıcı)
         self.current_date = QDate.currentDate()
@@ -366,33 +424,25 @@ class TimeTrackingForm(QWidget):
         start_date = self.current_date
         end_date = self.current_date.addDays(6)
         
-        date_label = QLabel(f"<b>Tarih Aralığı:</b> {start_date.toString('dd.MM.yyyy')} - {end_date.toString('dd.MM.yyyy')}")
-        date_label.setStyleSheet("color: #495057;")
+        date_label = QLabel(f"{start_date.toString('dd.MM.yyyy')} - {end_date.toString('dd.MM.yyyy')}")
+        date_label.setStyleSheet("""
+            color: #495057;
+            font-size: 16px;
+            font-weight: bold;
+        """)
         date_range_layout.addWidget(date_label)
         layout.addWidget(self.date_range_group)
         
-        # Tablo Grup Kutusu
-        time_table_group = QGroupBox("Zaman Çizelgesi")
-        time_table_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top center;
-                padding: 0 10px;
-                background-color: #e9ecef;
-                color: #495057;
-            }
+        # Tablo (grup kutusu olmadan)
+        table_group = QFrame()
+        table_group.setFrameShape(QFrame.StyledPanel)
+        table_group.setStyleSheet("""
+            background-color: #ffffff;
+            border-radius: 5px;
+            border: 1px solid #bdc3c7;
+            padding: 5px;
         """)
-        
-        time_table_layout = QVBoxLayout(time_table_group)
+        table_layout = QVBoxLayout(table_group)
         
         # Tablo
         self.days_table = QTableWidget()
@@ -404,17 +454,6 @@ class TimeTrackingForm(QWidget):
         ])
         self.days_table.verticalHeader().setVisible(False)  # Satır numaralarını gizle
         
-        # Tablo için kutu
-        table_group = QFrame()
-        table_group.setFrameShape(QFrame.StyledPanel)
-        table_group.setStyleSheet("""
-            background-color: #ffffff;
-            border-radius: 5px;
-            border: 1px solid #bdc3c7;
-            padding: 5px;
-        """)
-        table_layout = QVBoxLayout(table_group)
-        table_layout.addWidget(QLabel("<b>Zaman Çizelgesi</b>"))
         table_layout.addWidget(self.days_table)
         
         # Özet bölümü
@@ -558,8 +597,9 @@ class TimeTrackingForm(QWidget):
             "Öğle Bitiş", "Çıkış"
         ])
         
-        # Tablo başlıklarını daha okunaklı hale getir
+        # Tablo başlıklarını daha okunaklı hale getir ve ortala
         header = self.days_table.horizontalHeader()
+        header.setDefaultAlignment(Qt.AlignCenter)  # Başlıkları ortala
         header.setStyleSheet("""
             QHeaderView::section {
                 background-color: #4a86e8;
@@ -614,7 +654,12 @@ class TimeTrackingForm(QWidget):
                 time_edit.setDisplayFormat("HH:mm")
                 time_edit.setTime(default_time)
                 time_edit.timeChanged.connect(lambda time, r=row: self.on_time_changed(r))
-                time_edit.setStyleSheet("QTimeEdit { padding: 4px; }")
+                time_edit.setStyleSheet("""
+                    QTimeEdit { 
+                        padding: 4px; 
+                        qproperty-alignment: AlignCenter;
+                    }
+                """)
                 self.days_table.setCellWidget(row, col, time_edit)
             
             # Hafta sonu günlerini gri yap
@@ -649,10 +694,7 @@ class TimeTrackingForm(QWidget):
                 self.save_day_data(row)
             
             self.changes_pending = False
-            self.status_label.setText("Değişiklikler kaydedildi")
-            
-            # 3 saniye sonra durum mesajını temizle
-            QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+            # Mesaj gösterme özelliği kaldırıldı
     
     def save_day_data(self, row):
         """Günlük veriyi kaydeder"""
@@ -801,14 +843,18 @@ class TimeTrackingForm(QWidget):
         - Ondalık kısmı olmaz
         - TL ibaresi eklenir
         """
-        # Birler basamağını 5'e yuvarla
-        rounded_value = round(value / 5) * 5
-        
-        # Binlik ayırıcı ekle
-        formatted = f"{rounded_value:,.0f}".replace(",", ".")
-        
-        # TL ibaresi ekle
-        return f"{formatted} TL"
+        try:
+            value = float(value)
+            # Birler basamağını 5'e yuvarla
+            rounded_value = round(value / 5) * 5
+            
+            # Binlik ayırıcı ekle
+            formatted = f"{rounded_value:,.0f}".replace(",", ".")
+            
+            # TL ibaresi ekle
+            return f"{formatted} TL"
+        except (ValueError, TypeError):
+            return "0 TL"
 
 class MainWindow(QMainWindow):
     def __init__(self):
