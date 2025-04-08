@@ -233,10 +233,10 @@ class TimeTrackingForm(QWidget):
         self.employee_name_label.setStyleSheet("""
             QLabel {
                 color: #212529;
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
-                margin: 10px 0;
-                padding: 5px;
+                margin: 12px 0;
+                padding: 8px;
                 border-bottom: 1px solid #dee2e6;
             }
         """)
@@ -246,8 +246,8 @@ class TimeTrackingForm(QWidget):
         title_style = """
             QLabel {
                 color: #495057;
-                font-size: 14px;
-                margin-top: 8px;
+                font-size: 16px;
+                margin-top: 10px;
                 text-align: center;
             }
         """
@@ -255,9 +255,9 @@ class TimeTrackingForm(QWidget):
         value_style = """
             QLabel {
                 color: #212529;
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
-                margin-bottom: 12px;
+                margin-bottom: 15px;
                 text-align: center;
             }
         """
@@ -316,10 +316,10 @@ class TimeTrackingForm(QWidget):
         self.total_payment_label.setStyleSheet("""
             QLabel {
                 color: #212529;
-                font-size: 16px;
+                font-size: 20px;
                 font-weight: bold;
-                margin-top: 5px;
-                margin-bottom: 15px;
+                margin-top: 8px;
+                margin-bottom: 20px;
                 text-align: center;
             }
         """)
