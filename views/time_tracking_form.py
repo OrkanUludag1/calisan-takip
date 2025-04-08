@@ -196,6 +196,9 @@ class TimeTrackingForm(QWidget):
         self.days_table.setRowCount(7)  # Haftanın 7 günü
         self.days_table.setColumnCount(6)  # Gün, Durum, Giriş, Öğle Başlangıç, Öğle Bitiş, Çıkış
         
+        # Satır numaralarını gizle
+        self.days_table.verticalHeader().setVisible(False)
+        
         # Tabloyu tam sığdır ve kaydırma çubuklarını kaldır
         self.days_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.days_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -367,6 +370,9 @@ class TimeTrackingForm(QWidget):
                 font-size: 12px;
             }
         """)
+        
+        # Satır numaralarını gizle
+        self.days_table.verticalHeader().setVisible(False)
         
         # Sütun genişliklerini ayarla
         self.days_table.setColumnCount(6)
