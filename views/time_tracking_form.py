@@ -203,6 +203,9 @@ class TimeTrackingForm(QWidget):
         self.days_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.days_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
+        # Tablonun boyutunu sabitle
+        self.days_table.setFixedSize(800, 350)
+        
         table_layout.addWidget(self.days_table)
         content_layout.addLayout(table_layout, 7)  # Tabloya daha fazla alan ver
         
@@ -215,6 +218,7 @@ class TimeTrackingForm(QWidget):
         summary_widget = QWidget()
         summary_widget.setLayout(summary_layout)
         summary_widget.setFixedWidth(250)  # Sabit genişlik
+        summary_widget.setFixedHeight(350)  # Sabit yükseklik - tablonun yüksekliği ile aynı
         summary_widget.setStyleSheet("""
             QWidget {
                 background-color: #f8f9fa;
