@@ -193,7 +193,7 @@ class TimeTrackingForm(QWidget):
         
         # Zaman çizelgesi tablosu
         self.days_table = QTableWidget()
-        self.days_table.setRowCount(7)  # Haftanın 7 günü
+        self.days_table.setRowCount(8)  # 8 satır
         self.days_table.setColumnCount(6)  # Gün, Durum, Giriş, Öğle Başlangıç, Öğle Bitiş, Çıkış
         
         # Satır numaralarını gizle
@@ -204,7 +204,7 @@ class TimeTrackingForm(QWidget):
         self.days_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
         # Tablonun boyutunu sabitle
-        self.days_table.setFixedSize(800, 245)
+        self.days_table.setFixedSize(800, 280)
         
         table_layout.addWidget(self.days_table)
         content_layout.addLayout(table_layout, 7)  # Tabloya daha fazla alan ver
@@ -382,7 +382,7 @@ class TimeTrackingForm(QWidget):
         self.days_table.setColumnCount(6)
         
         # Satır yüksekliklerini ayarla - her satır için 35 piksel
-        for row in range(7):
+        for row in range(8):
             self.days_table.setRowHeight(row, 35)
         
         # Tablonun toplam genişliğini al
@@ -407,9 +407,9 @@ class TimeTrackingForm(QWidget):
         # Günleri tabloya ekle
         self.day_status_checkboxes = []  # Temizle
         
-        for row in range(7):
+        for row in range(8):
             current_day = current_week_start.addDays(row)
-            day_name = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"][row]
+            day_name = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar", "Pazar"][row]
             is_weekend = current_day.dayOfWeek() in [6, 7]  # 6=Cumartesi, 7=Pazar
             
             # Gün hücresi - Sadece gün adını göster (tarih olmadan)
@@ -500,7 +500,7 @@ class TimeTrackingForm(QWidget):
                 records = self.db.get_week_work_hours(self.current_employee_id, week_start)
                 
                 # Kayıtları tabloya yükle
-                for row in range(7):
+                for row in range(8):
                     current_day = self.current_date.addDays(row)
                     current_date_str = current_day.toString("yyyy-MM-dd")
                     
@@ -667,7 +667,7 @@ class TimeTrackingForm(QWidget):
         if not self.current_employee_id:
             return
         
-        for row in range(7):
+        for row in range(8):
             self.auto_save_row(row)
     
     def calculate_total_hours(self):
@@ -679,7 +679,7 @@ class TimeTrackingForm(QWidget):
         active_days = 0
         
         # Her gün için çalışma saatlerini hesapla
-        for row in range(min(7, len(self.day_status_checkboxes))):
+        for row in range(min(8, len(self.day_status_checkboxes))):
             # Gün aktif mi kontrol et
             is_active = self.day_status_checkboxes[row].isChecked()
             if not is_active:
