@@ -162,20 +162,14 @@ class MainWindow(QMainWindow):
         # İsmi büyük harfe çevir
         name = name.strip().upper()
         
-        # İsmi kısalt (çok uzunsa)
-        if len(name) > 10:
-            short_name = name[:8] + ".."
-        else:
-            short_name = name
-        
         # Çalışan için zaman takip formu oluştur
         time_form = TimeTrackingForm(self.db, employee_id)
         
-        # Çalışan adını form'a aktar (tam isim)
+        # Çalışan adını form'a aktar
         time_form.set_employee_data(employee_id, name)
         
-        # Sekmeyi ekle (kısaltılmış isim)
-        tab_index = self.tabs.addTab(time_form, f"{short_name}")
+        # Sekmeyi ekle
+        tab_index = self.tabs.addTab(time_form, f"{name}")
         self.employee_tabs[employee_id] = tab_index
     
     def on_employee_selected(self, employee_id, name):
