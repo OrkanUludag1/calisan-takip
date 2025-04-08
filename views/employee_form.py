@@ -74,10 +74,14 @@ class EmployeeDialog(QDialog):
             return None
 
 class EmployeeForm(QWidget):
+    """Çalışan formu"""
+    
+    # Sinyaller
     employee_selected = pyqtSignal(int, str)  # id, name
     employee_added = pyqtSignal()       # Yeni çalışan eklendiğinde
     employee_updated = pyqtSignal()     # Çalışan güncellendiğinde
     employee_deleted = pyqtSignal()     # Çalışan silindiğinde
+    employee_activated = pyqtSignal(int, bool)  # employee_id, active_status
     
     def __init__(self, db=None, parent=None):
         super().__init__(parent)
@@ -136,60 +140,80 @@ class EmployeeForm(QWidget):
         # Tıklanan öğeyi al
         item = self.employee_list.itemAt(position)
         
-        # Eğer geçerli bir öğe yoksa veya başlık satırına tıklandıysa çık
+        # Menüyü oluştur
+        menu = QMenu(self)
+        
+        # Çalışan Ekle seçeneği her durumda gösterilir
+        add_action = menu.addAction("Çalışan Ekle")
+        add_action.triggered.connect(self.add_employee)
+        
+        # Geçerli bir öğe yoksa veya başlık satırına tıklandıysa sadece Çalışan Ekle seçeneğini göster
         if not item or item.row() == 0:
+            action = menu.exec_(self.employee_list.mapToGlobal(position))
+            if action == add_action:
+                self.add_employee()
             return
             
         # Çalışanın ID'sini ve aktif durumunu al
         employee_id = item.data(Qt.UserRole)
         is_active = item.data(Qt.UserRole + 1)
         
-        # Menüyü oluştur
-        menu = QMenu(self)
-        
-        # Menü eylemleri
+        # Diğer menü eylemleri
+        menu.addSeparator()
         edit_action = menu.addAction("Düzenle")
+        edit_action.triggered.connect(lambda: self.edit_employee(employee_id=employee_id))
+        
         menu.addSeparator()
         
         # Aktif durumuna göre eylem ekle
+        activate_action = None
+        deactivate_action = None
+        
         if is_active:
             deactivate_action = menu.addAction("Pasif Yap")
             deactivate_action.triggered.connect(lambda: self.toggle_employee_active(employee_id, False))
         else:
             activate_action = menu.addAction("Aktif Yap")
             activate_action.triggered.connect(lambda: self.toggle_employee_active(employee_id, True))
-            
-        edit_action.triggered.connect(lambda: self.edit_employee(employee_id=employee_id))
         
+        # Çalışan Sil seçeneği
+        menu.addSeparator()
+        delete_action = menu.addAction("Çalışan Sil")
+            
         # Menüyü göster
         action = menu.exec_(self.employee_list.mapToGlobal(position))
         
-        if action == deactivate_action:
-            # Aktif/Pasif durumunu değiştir
-            self.toggle_employee_active(employee_id, False)
-        
-        elif action == activate_action:
-            # Aktif/Pasif durumunu değiştir
-            self.toggle_employee_active(employee_id, True)
-        
-        elif action == edit_action:
-            self.edit_employee(employee_id=employee_id)
-        
-        elif action == deactivate_action:
-            # Silme onayı iste
-            reply = QMessageBox.question(
-                self, 
-                'Çalışanı Sil',
-                f'"{item.text()}" isimli çalışanı silmek istediğinize emin misiniz?',
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
+        # Seçilen eyleme göre işlem yap
+        if action is not None:
+            if action == add_action:
+                self.add_employee()
             
-            if reply == QMessageBox.Yes:
-                # Çalışanı sil
-                self.db.delete_employee(employee_id)
-                self.employee_deleted.emit()  # Sinyal yayınla
-                self.load_employees()
+            elif deactivate_action is not None and action == deactivate_action:
+                # Aktif/Pasif durumunu değiştir
+                self.toggle_employee_active(employee_id, False)
+            
+            elif activate_action is not None and action == activate_action:
+                # Aktif/Pasif durumunu değiştir
+                self.toggle_employee_active(employee_id, True)
+            
+            elif action == edit_action:
+                self.edit_employee(employee_id=employee_id)
+                
+            elif action == delete_action:
+                # Silme onayı iste
+                reply = QMessageBox.question(
+                    self, 
+                    'Çalışanı Sil',
+                    f'"{item.text()}" isimli çalışanı silmek istediğinize emin misiniz?',
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                
+                if reply == QMessageBox.Yes:
+                    # Çalışanı sil
+                    self.db.delete_employee(employee_id)
+                    self.employee_deleted.emit()  # Sinyal yayınla
+                    self.load_employees()
     
     def add_employee(self):
         """Yeni çalışan ekler"""
@@ -248,6 +272,7 @@ class EmployeeForm(QWidget):
         """Çalışanın aktif/pasif durumunu değiştirir"""
         if self.db.toggle_employee_active(employee_id, active_status):
             self.employee_updated.emit()  # Sinyal yayınla
+            self.employee_activated.emit(employee_id, active_status)  # Yeni sinyal
             self.load_employees()
     
     def load_employees(self):
@@ -284,13 +309,18 @@ class EmployeeForm(QWidget):
                 item.setTextAlignment(Qt.AlignCenter)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 
-                # Pasif çalışanları soluk göster
+                # Pasif çalışanları daha belirgin şekilde göster
                 if not is_active:
                     font = item.font()
                     font.setItalic(True)
+                    font.setStrikeOut(True)  # Üstü çizili göster
                     item.setFont(font)
-                    item.setForeground(QBrush(QColor("#999999")))
-
+                    item.setForeground(QBrush(QColor("#FF6B6B")))  # Kırmızımsı renk
+                    
+                    # Pasif olduğunu belirtmek için isim yanına (Pasif) ekle
+                    if item == name_item:
+                        item.setText(f"{name} (Pasif)")
+    
     def format_currency(self, value):
         """Para birimini formatlar"""
         return f"{value:,.2f} ₺".replace(",", ".")

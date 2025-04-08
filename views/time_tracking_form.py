@@ -14,10 +14,10 @@ from utils.helpers import format_currency, calculate_working_hours
 class TimeTrackingForm(QWidget):
     """Zaman takibi formu"""
     
-    def __init__(self, db):
+    def __init__(self, db, employee_id=None):
         super().__init__()
         self.db = db
-        self.current_employee_id = None
+        self.current_employee_id = employee_id
         self.current_date = QDate.currentDate()
         self.current_date = self.current_date.addDays(-(self.current_date.dayOfWeek() - 1))  # Haftanın başlangıcı (Pazartesi)
         self.day_status_checkboxes = []
@@ -30,33 +30,6 @@ class TimeTrackingForm(QWidget):
     def initUI(self):
         main_layout = QVBoxLayout()
         main_layout.setSpacing(15)
-        
-        # Çalışan seçimi
-        employee_layout = QHBoxLayout()
-        
-        self.employee_combo = QComboBox()
-        self.employee_combo.setMinimumHeight(35)
-        self.employee_combo.currentIndexChanged.connect(self.on_employee_changed)
-        self.employee_combo.setStyleSheet("""
-            QComboBox {
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                padding: 5px 10px;
-                background-color: white;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 30px;
-            }
-            QComboBox::down-arrow {
-                image: url(down_arrow.png);
-                width: 12px;
-                height: 12px;
-            }
-        """)
-        employee_layout.addWidget(self.employee_combo)
-        
-        main_layout.addLayout(employee_layout)
         
         # Tarih aralığı
         date_layout = QHBoxLayout()
@@ -212,62 +185,13 @@ class TimeTrackingForm(QWidget):
         
         self.setLayout(main_layout)
         
-        # Çalışanları ve günleri yükle
-        self.load_employees()
+        # Günleri yükle
         self.load_week_days()
         self.update_date_range_label()
     
     def format_currency(self, value):
         """Para birimini formatlar"""
         return format_currency(value)
-    
-    def load_employees(self):
-        """Çalışanları combobox'a yükler"""
-        self.employee_combo.clear()
-        
-        employees = self.db.get_employees()
-        
-        for employee_id, name, _, _, _, is_active in employees:
-            # Sadece aktif çalışanları ekle
-            if is_active:
-                self.employee_combo.addItem(name, employee_id)
-    
-    def on_employee_changed(self, index):
-        """Çalışan değiştiğinde çağrılır"""
-        if index >= 0:
-            self.current_employee_id = self.employee_combo.itemData(index)
-            self.load_saved_records()
-            # Only calculate total hours if day_status_checkboxes is properly initialized
-            if self.day_status_checkboxes and len(self.day_status_checkboxes) == 7:
-                self.calculate_total_hours()
-    
-    def update_date_range_label(self):
-        """Tarih aralığı etiketini günceller"""
-        week_start = self.current_date
-        week_end = week_start.addDays(6)
-        
-        start_str = week_start.toString("dd.MM.yyyy")
-        end_str = week_end.toString("dd.MM.yyyy")
-        
-        self.date_range_label.setText(f"{start_str} - {end_str}")
-    
-    def prev_week(self):
-        """Önceki haftaya geçer"""
-        self.current_date = self.current_date.addDays(-7)
-        self.update_date_range_label()
-        self.load_week_days()
-        if self.current_employee_id:
-            self.load_saved_records()
-            self.calculate_total_hours()
-    
-    def next_week(self):
-        """Sonraki haftaya geçer"""
-        self.current_date = self.current_date.addDays(7)
-        self.update_date_range_label()
-        self.load_week_days()
-        if self.current_employee_id:
-            self.load_saved_records()
-            self.calculate_total_hours()
     
     def load_week_days(self):
         """Haftalık günleri yükler"""
@@ -368,68 +292,8 @@ class TimeTrackingForm(QWidget):
                         widget.setGraphicsEffect(effect)
         
         # Kaydedilmiş kayıtları yükle
-        if self.current_employee_id:
-            self.load_saved_records()
-            self.calculate_total_hours()  # Toplamları güncelle
-    
-    def load_saved_records(self):
-        """Kaydedilmiş çalışma saatlerini yükler"""
-        if not self.current_employee_id:
-            return
-        
-        try:
-            # Haftanın başlangıç tarihini al
-            week_start = self.current_date.toString("yyyy-MM-dd")
-            
-            # Veritabanından kayıtları al
-            records = self.db.get_week_work_hours(self.current_employee_id, week_start)
-            
-            # Kayıtları tabloya yükle
-            for row in range(7):
-                current_day = self.current_date.addDays(row)
-                current_date_str = current_day.toString("yyyy-MM-dd")
-                
-                # Bu tarih için kayıt var mı kontrol et
-                record_found = False
-                for record in records:
-                    if record['date'] == current_date_str:
-                        # Kayıt bulundu, değerleri ayarla
-                        entry_time = QTime.fromString(record['entry_time'], "HH:mm")
-                        lunch_start = QTime.fromString(record['lunch_start'], "HH:mm")
-                        lunch_end = QTime.fromString(record['lunch_end'], "HH:mm")
-                        exit_time = QTime.fromString(record['exit_time'], "HH:mm")
-                        is_active = bool(record['day_active'])
-                        
-                        # Zaman değerlerini ayarla - None kontrolü ekle
-                        entry_widget = self.days_table.cellWidget(row, 2)
-                        lunch_start_widget = self.days_table.cellWidget(row, 3)
-                        lunch_end_widget = self.days_table.cellWidget(row, 4)
-                        exit_widget = self.days_table.cellWidget(row, 5)
-                        
-                        if entry_widget:
-                            entry_widget.setTime(entry_time)
-                        if lunch_start_widget:
-                            lunch_start_widget.setTime(lunch_start)
-                        if lunch_end_widget:
-                            lunch_end_widget.setTime(lunch_end)
-                        if exit_widget:
-                            exit_widget.setTime(exit_time)
-                        
-                        # Durum checkbox'ını ayarla
-                        if row < len(self.day_status_checkboxes):
-                            self.day_status_checkboxes[row].setChecked(is_active)
-                        
-                        record_found = True
-                        break
-            
-                # Kayıt bulunamadıysa, varsayılan değerleri kullan
-                if not record_found and row < len(self.day_status_checkboxes):
-                    # Durum checkbox'ını aktif yap
-                    self.day_status_checkboxes[row].setChecked(True)
-        except Exception as e:
-            # Hata mesajını sadece gerçek bir hata varsa göster
-            if str(e) != "0":
-                print(f"Kayıtları yüklerken hata: {e}")
+        self.load_saved_records()
+        self.calculate_total_hours()  # Toplamları güncelle
     
     def on_time_changed(self, row):
         """Zaman değiştiğinde çağrılır"""
@@ -538,3 +402,86 @@ class TimeTrackingForm(QWidget):
         self.food_allowance_label.setText(f"{self.format_currency(food_allowance)}")
         self.transport_allowance_label.setText(f"{self.format_currency(transport_allowance)}")
         self.total_payment_label.setText(f"{self.format_currency(total_payment)}")
+    
+    def update_date_range_label(self):
+        """Tarih aralığı etiketini günceller"""
+        week_start = self.current_date
+        week_end = week_start.addDays(6)
+        
+        start_str = week_start.toString("dd.MM.yyyy")
+        end_str = week_end.toString("dd.MM.yyyy")
+        
+        self.date_range_label.setText(f"{start_str} - {end_str}")
+    
+    def prev_week(self):
+        """Önceki haftaya geçer"""
+        self.current_date = self.current_date.addDays(-7)
+        self.update_date_range_label()
+        self.load_week_days()
+        self.calculate_total_hours()
+    
+    def next_week(self):
+        """Sonraki haftaya geçer"""
+        self.current_date = self.current_date.addDays(7)
+        self.update_date_range_label()
+        self.load_week_days()
+        self.calculate_total_hours()
+    
+    def load_saved_records(self):
+        """Kaydedilmiş çalışma saatlerini yükler"""
+        if not self.current_employee_id:
+            return
+        
+        try:
+            # Haftanın başlangıç tarihini al
+            week_start = self.current_date.toString("yyyy-MM-dd")
+            
+            # Veritabanından kayıtları al
+            records = self.db.get_week_work_hours(self.current_employee_id, week_start)
+            
+            # Kayıtları tabloya yükle
+            for row in range(7):
+                current_day = self.current_date.addDays(row)
+                current_date_str = current_day.toString("yyyy-MM-dd")
+                
+                # Bu tarih için kayıt var mı kontrol et
+                record_found = False
+                for record in records:
+                    if record['date'] == current_date_str:
+                        # Kayıt bulundu, değerleri ayarla
+                        entry_time = QTime.fromString(record['entry_time'], "HH:mm")
+                        lunch_start = QTime.fromString(record['lunch_start'], "HH:mm")
+                        lunch_end = QTime.fromString(record['lunch_end'], "HH:mm")
+                        exit_time = QTime.fromString(record['exit_time'], "HH:mm")
+                        is_active = bool(record['day_active'])
+                        
+                        # Zaman değerlerini ayarla - None kontrolü ekle
+                        entry_widget = self.days_table.cellWidget(row, 2)
+                        lunch_start_widget = self.days_table.cellWidget(row, 3)
+                        lunch_end_widget = self.days_table.cellWidget(row, 4)
+                        exit_widget = self.days_table.cellWidget(row, 5)
+                        
+                        if entry_widget:
+                            entry_widget.setTime(entry_time)
+                        if lunch_start_widget:
+                            lunch_start_widget.setTime(lunch_start)
+                        if lunch_end_widget:
+                            lunch_end_widget.setTime(lunch_end)
+                        if exit_widget:
+                            exit_widget.setTime(exit_time)
+                        
+                        # Durum checkbox'ını ayarla
+                        if row < len(self.day_status_checkboxes):
+                            self.day_status_checkboxes[row].setChecked(is_active)
+                        
+                        record_found = True
+                        break
+            
+                # Kayıt bulunamadıysa, varsayılan değerleri kullan
+                if not record_found and row < len(self.day_status_checkboxes):
+                    # Durum checkbox'ını aktif yap
+                    self.day_status_checkboxes[row].setChecked(True)
+        except Exception as e:
+            # Hata mesajını sadece gerçek bir hata varsa göster
+            if str(e) != "0":
+                print(f"Kayıtları yüklerken hata: {e}")

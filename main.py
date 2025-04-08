@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         # Çalışan formu
         self.employee_form = EmployeeForm(db=self.db)
         self.employee_form.employee_selected.connect(self.on_employee_selected)
+        self.employee_form.employee_activated.connect(self.on_employee_activated)  
         self.tabs.addTab(self.employee_form, "Çalışan Yönetimi")
         
         # Tüm çalışanlar için sekmeleri oluştur
@@ -149,18 +150,7 @@ class MainWindow(QMainWindow):
             return
         
         # Çalışan için zaman takip formu oluştur
-        time_form = TimeTrackingForm(self.db)
-        time_form.current_employee_id = employee_id
-        
-        # Çalışan combobox'ını güncelle
-        for i in range(time_form.employee_combo.count()):
-            if time_form.employee_combo.itemData(i) == employee_id:
-                time_form.employee_combo.setCurrentIndex(i)
-                break
-        
-        # Verileri yükle
-        time_form.load_saved_records()
-        time_form.calculate_total_hours()
+        time_form = TimeTrackingForm(self.db, employee_id)
         
         # Sekmeyi ekle
         tab_index = self.tabs.addTab(time_form, f"{name}")
@@ -180,6 +170,44 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentIndex(self.tabs.count() - 1)
         except Exception as e:
             print(f"Hata: {e}")
+
+    def on_employee_activated(self, employee_id, active_status):
+        """Çalışan aktif/pasif durumu değiştiğinde çağrılır"""
+        if active_status:
+            # Çalışan aktif yapıldıysa ve sekmesi yoksa, hemen aç
+            if employee_id not in self.employee_tabs:
+                # Çalışan bilgilerini al
+                employee = self.db.get_employee(employee_id)
+                if employee:
+                    # Çalışan adını al
+                    _, name, _, _, _, _ = employee
+                    # Sekmeyi oluştur
+                    self.create_employee_tab(employee_id, name)
+        else:
+            # Eğer çalışan pasif yapıldıysa, sekmesini kapat
+            if employee_id in self.employee_tabs:
+                tab_index = self.employee_tabs[employee_id]
+                self.tabs.removeTab(tab_index)
+                del self.employee_tabs[employee_id]
+                
+                # Kalan sekmelerin indekslerini güncelle
+                self.update_tab_indices()
+    
+    def update_tab_indices(self):
+        """Sekme indekslerini günceller"""
+        # Tüm sekmelerin yeni indekslerini güncelle
+        new_employee_tabs = {}
+        for employee_id, old_index in self.employee_tabs.items():
+            # Yeni indeksi bul
+            for i in range(self.tabs.count()):
+                if i > 0:  # İlk sekme her zaman çalışan yönetimi
+                    widget = self.tabs.widget(i)
+                    if isinstance(widget, TimeTrackingForm) and widget.current_employee_id == employee_id:
+                        new_employee_tabs[employee_id] = i
+                        break
+        
+        # Eski sözlüğü yenisiyle değiştir
+        self.employee_tabs = new_employee_tabs
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
