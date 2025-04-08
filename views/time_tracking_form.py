@@ -128,65 +128,77 @@ class TimeTrackingForm(QWidget):
         summary_layout.setContentsMargins(20, 15, 10, 10)
         summary_layout.setSpacing(15)
         
-        # Özet başlığı
-        summary_title = QLabel("Haftalık Özet")
-        summary_title.setStyleSheet("""
+        # Özet bölümünü içeren widget
+        summary_widget = QWidget()
+        summary_widget.setLayout(summary_layout)
+        summary_widget.setFixedWidth(250)  # Sabit genişlik
+        
+        # Başlık ve değer etiketleri için stil tanımları
+        title_style = """
             QLabel {
                 color: #495057;
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: bold;
-                margin-bottom: 10px;
             }
-        """)
-        summary_layout.addWidget(summary_title)
+        """
         
-        # Toplam çalışma saatleri
-        self.total_hours_label = QLabel("Toplam Çalışma Saati: 0.0 saat")
-        self.total_hours_label.setStyleSheet("""
+        value_style = """
             QLabel {
                 color: #212529;
                 font-size: 14px;
+                margin-left: 10px;
+                margin-bottom: 10px;
             }
-        """)
+        """
+        
+        # Toplam çalışma saatleri
+        hours_title = QLabel("Toplam Çalışma Saati:")
+        hours_title.setStyleSheet(title_style)
+        summary_layout.addWidget(hours_title)
+        
+        self.total_hours_label = QLabel("0.0 saat")
+        self.total_hours_label.setStyleSheet(value_style)
         summary_layout.addWidget(self.total_hours_label)
         
         # Haftalık ücret
-        self.weekly_salary_label = QLabel("Haftalık Ücret: 0 TL")
-        self.weekly_salary_label.setStyleSheet("""
-            QLabel {
-                color: #212529;
-                font-size: 14px;
-            }
-        """)
+        salary_title = QLabel("Haftalık Ücret:")
+        salary_title.setStyleSheet(title_style)
+        summary_layout.addWidget(salary_title)
+        
+        self.weekly_salary_label = QLabel("0 TL")
+        self.weekly_salary_label.setStyleSheet(value_style)
         summary_layout.addWidget(self.weekly_salary_label)
         
         # Yemek ücreti
-        self.food_allowance_label = QLabel("Yemek Ücreti: 0 TL")
-        self.food_allowance_label.setStyleSheet("""
-            QLabel {
-                color: #212529;
-                font-size: 14px;
-            }
-        """)
+        food_title = QLabel("Yemek Ücreti:")
+        food_title.setStyleSheet(title_style)
+        summary_layout.addWidget(food_title)
+        
+        self.food_allowance_label = QLabel("0 TL")
+        self.food_allowance_label.setStyleSheet(value_style)
         summary_layout.addWidget(self.food_allowance_label)
         
         # Yol ücreti
-        self.transport_allowance_label = QLabel("Yol Ücreti: 0 TL")
-        self.transport_allowance_label.setStyleSheet("""
-            QLabel {
-                color: #212529;
-                font-size: 14px;
-            }
-        """)
+        transport_title = QLabel("Yol Ücreti:")
+        transport_title.setStyleSheet(title_style)
+        summary_layout.addWidget(transport_title)
+        
+        self.transport_allowance_label = QLabel("0 TL")
+        self.transport_allowance_label.setStyleSheet(value_style)
         summary_layout.addWidget(self.transport_allowance_label)
         
-        # Toplam ücret
-        self.total_payment_label = QLabel("Toplam Ödeme: 0 TL")
+        # Toplam ödeme
+        total_title = QLabel("Toplam Ödeme:")
+        total_title.setStyleSheet(title_style)
+        summary_layout.addWidget(total_title)
+        
+        self.total_payment_label = QLabel("0 TL")
         self.total_payment_label.setStyleSheet("""
             QLabel {
                 color: #212529;
                 font-size: 16px;
                 font-weight: bold;
+                margin-left: 10px;
             }
         """)
         summary_layout.addWidget(self.total_payment_label)
@@ -194,7 +206,7 @@ class TimeTrackingForm(QWidget):
         # Boşluk ekle
         summary_layout.addStretch()
         
-        content_layout.addLayout(summary_layout, 3)  # Özete daha az alan ver
+        content_layout.addWidget(summary_widget)
         
         main_layout.addLayout(content_layout)
         
@@ -516,8 +528,8 @@ class TimeTrackingForm(QWidget):
         total_payment = weekly_salary + food_allowance + transport_allowance
         
         # Etiketleri güncelle
-        self.total_hours_label.setText(f"Toplam Çalışma Saati: {total_hours:.1f} saat")
-        self.weekly_salary_label.setText(f"Haftalık Ücret: {self.format_currency(weekly_salary)}")
-        self.food_allowance_label.setText(f"Yemek Ücreti: {self.format_currency(food_allowance)}")
-        self.transport_allowance_label.setText(f"Yol Ücreti: {self.format_currency(transport_allowance)}")
-        self.total_payment_label.setText(f"Toplam Ödeme: {self.format_currency(total_payment)}")
+        self.total_hours_label.setText(f"{total_hours:.1f} saat")
+        self.weekly_salary_label.setText(f"{self.format_currency(weekly_salary)}")
+        self.food_allowance_label.setText(f"{self.format_currency(food_allowance)}")
+        self.transport_allowance_label.setText(f"{self.format_currency(transport_allowance)}")
+        self.total_payment_label.setText(f"{self.format_currency(total_payment)}")
