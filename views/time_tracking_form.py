@@ -204,7 +204,7 @@ class TimeTrackingForm(QWidget):
         self.days_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
         # Tablonun boyutunu sabitle
-        self.days_table.setFixedSize(800, 310)
+        self.days_table.setFixedSize(800, 245)
         
         table_layout.addWidget(self.days_table)
         content_layout.addLayout(table_layout, 7)  # Tabloya daha fazla alan ver
@@ -381,9 +381,9 @@ class TimeTrackingForm(QWidget):
         # Sütun genişliklerini ayarla
         self.days_table.setColumnCount(6)
         
-        # Satır yüksekliklerini ayarla - her satır için 44 piksel
+        # Satır yüksekliklerini ayarla - her satır için 35 piksel
         for row in range(7):
-            self.days_table.setRowHeight(row, 44)
+            self.days_table.setRowHeight(row, 35)
         
         # Tablonun toplam genişliğini al
         total_width = self.days_table.viewport().width()
