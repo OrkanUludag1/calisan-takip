@@ -70,7 +70,7 @@ class MainWindow(QMainWindow):
         self.employee_form = EmployeeForm(db=self.db)
         self.employee_form.employee_selected.connect(self.on_employee_selected)
         self.employee_form.employee_activated.connect(self.on_employee_activated)  
-        self.tabs.addTab(self.employee_form, "Çalışan Yönetimi")
+        self.tabs.addTab(self.employee_form, "ÇALIŞANLAR")
         
         # Tüm çalışanlar için sekmeleri oluştur
         self.load_employee_tabs()
