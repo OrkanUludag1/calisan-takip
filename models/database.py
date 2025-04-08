@@ -123,7 +123,7 @@ class EmployeeDB:
         cursor.execute('''
             SELECT id, name, weekly_salary, daily_food, daily_transport, is_active 
             FROM employees 
-            ORDER BY is_active DESC, weekly_salary DESC, name
+            ORDER BY name
         ''')
         return cursor.fetchall()
     

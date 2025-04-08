@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QBrush, QFont
+import sqlite3
 
 from models.database import EmployeeDB
 from utils.helpers import format_currency
@@ -281,9 +282,21 @@ class EmployeeForm(QWidget):
         while self.employee_list.rowCount() > 1:
             self.employee_list.removeRow(1)
         
-        employees = self.db.get_employees()
+        # Doğrudan veritabanından çalışanları al
+        conn = sqlite3.connect('employee.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, weekly_salary, daily_food, daily_transport, is_active 
+            FROM employees 
+            ORDER BY name
+        ''')
+        employees = cursor.fetchall()
+        conn.close()
+        
+        print(f"Veritabanından {len(employees)} çalışan alındı")
         
         for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
+            print(f"Çalışan yükleniyor: ID: {employee_id}, İsim: {name}, Aktif: {is_active}")
             row = self.employee_list.rowCount()
             self.employee_list.insertRow(row)
             
