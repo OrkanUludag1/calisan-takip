@@ -1,55 +1,51 @@
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QTabWidget, 
-    QVBoxLayout, QWidget, QTabBar
-)
-from PyQt5.QtCore import Qt, pyqtSignal
-
 import sys
 import warnings
+
+# PyQt5 uyarılarını gizle
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 
 from models.database import EmployeeDB
 from views.employee_form import EmployeeForm
-from views.work_hours_form import WorkHoursForm
+from views.time_tracking_form import TimeTrackingForm
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
     
-    # Çalışan listesi değiştiğinde yayınlanacak sinyal
-    employee_list_changed = pyqtSignal()
-    
     def __init__(self):
         super().__init__()
         self.db = EmployeeDB()
+        self.employee_tabs = {}  # Çalışan sekmeleri için sözlük
         self.initUI()
     
     def initUI(self):
-        """Ana pencere arayüzünü başlatır"""
-        self.setWindowTitle('Çalışan Takip')
-        self.setGeometry(100, 100, 1200, 800)
+        """Kullanıcı arayüzünü başlatır"""
+        self.setWindowTitle("Çalışan Takip Sistemi")
+        self.setGeometry(100, 100, 900, 700)
+        self.setWindowIcon(QIcon("icon.png"))
         
         # Ana widget ve layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         
         # Tab widget
-        self.tab_widget = QTabWidget()
-        
-        # Sekme boyutlarını ayarla
-        self.tab_widget.setStyleSheet("""
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 1px solid #bdc3c7;
                 border-radius: 4px;
-                background-color: white;
-                top: -1px; /* sekme çizgisini düzelt */
+                background-color: #f8f9fa;
             }
             QTabBar::tab {
                 background-color: #e9ecef;
                 color: #495057;
-                min-width: 150px; /* minimum genişlik */
-                max-width: 150px; /* maksimum genişlik */
-                padding: 10px 5px; /* yatay padding'i azalt */
+                padding: 10px 20px;
                 border: 1px solid #bdc3c7;
                 border-bottom: none;
                 border-top-left-radius: 4px;
@@ -57,8 +53,8 @@ class MainWindow(QMainWindow):
                 margin-right: 2px;
             }
             QTabBar::tab:selected {
-                background-color: white;
-                border-bottom-color: white;
+                background-color: #f8f9fa;
+                border-bottom-color: #f8f9fa;
                 font-weight: bold;
             }
             QTabBar::tab:hover:!selected {
@@ -66,87 +62,122 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Çalışan yönetimi sekmesi
-        self.employee_tab = QWidget()
-        employee_layout = QVBoxLayout(self.employee_tab)
-        
         # Çalışan formu
-        self.employee_form = EmployeeForm(parent=self)
-        employee_layout.addWidget(self.employee_form)
+        self.employee_form = EmployeeForm(self.db)
+        self.employee_form.employee_selected.connect(self.on_employee_selected)
+        self.tabs.addTab(self.employee_form, "Çalışan Yönetimi")
         
-        # Çalışan formu sinyallerini bağla
-        self.employee_form.employee_added.connect(self.on_employee_list_changed)
-        self.employee_form.employee_updated.connect(self.on_employee_list_changed)
-        self.employee_form.employee_deleted.connect(self.on_employee_list_changed)
+        # Tüm çalışanlar için sekmeleri oluştur
+        self.load_employee_tabs()
         
-        # Çalışma saatleri sekmesi
-        self.work_hours_tab = QWidget()
-        work_hours_layout = QVBoxLayout(self.work_hours_tab)
-        
-        # Çalışma saatleri formu
-        self.work_hours_form = WorkHoursForm(parent=self)
-        work_hours_layout.addWidget(self.work_hours_form)
-        
-        # Çalışan listesi değiştiğinde çalışma saatleri formunu güncelle
-        self.employee_list_changed.connect(self.work_hours_form.refresh_employee_list)
-        
-        # Sekmeleri ekle
-        self.tab_widget.addTab(self.employee_tab, "Çalışanlar")
-        self.tab_widget.addTab(self.work_hours_tab, "Çalışma Saatleri")
-        
-        layout.addWidget(self.tab_widget)
+        main_layout.addWidget(self.tabs)
         
         # Genel stil
         self.setStyleSheet("""
-            QMainWindow {
+            QMainWindow, QWidget {
                 background-color: #f8f9fa;
+                color: #212529;
+                font-family: 'Segoe UI', Arial, sans-serif;
             }
-            QLineEdit, QComboBox {
-                padding: 8px;
+            QLineEdit, QComboBox, QDateEdit, QTimeEdit {
                 border: 1px solid #bdc3c7;
                 border-radius: 4px;
+                padding: 8px;
                 background-color: white;
+                selection-background-color: #3498db;
             }
-            QLineEdit:focus, QComboBox:focus {
-                border-color: #3498db;
+            QTableWidget {
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                gridline-color: #dcdcdc;
+                selection-background-color: #3498db;
+                selection-color: white;
+                alternate-background-color: #f5f5f5;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                padding: 6px;
+                border: 1px solid #dcdcdc;
+                border-bottom-width: 2px;
+                border-bottom-color: #bdc3c7;
+                font-weight: bold;
+            }
+            QLabel {
+                color: #495057;
             }
             QPushButton {
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
                 background-color: #3498db;
                 color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #2980b9;
             }
             QPushButton:pressed {
-                background-color: #2472a4;
+                background-color: #1c6ea4;
             }
-            QTableWidget {
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 8px;
-                border: none;
-            }
-            QTableWidget::item {
-                padding: 8px;
-            }
-            QTableWidget::item:selected {
-                background-color: #3498db;
-                color: white;
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
             }
         """)
+
+    def load_employee_tabs(self):
+        """Tüm çalışanlar için sekmeleri yükler"""
+        # Önce mevcut sekmeleri temizle (ilk sekme hariç)
+        while self.tabs.count() > 1:
+            self.tabs.removeTab(1)
         
-    def on_employee_list_changed(self):
-        """Çalışan listesi değiştiğinde çağrılır"""
-        # Çalışan listesi değişti sinyalini yayınla
-        self.employee_list_changed.emit()
+        self.employee_tabs = {}  # Sekme sözlüğünü temizle
+        
+        # Tüm çalışanları al
+        employees = self.db.get_employees()
+        
+        # Her çalışan için sekme oluştur
+        for employee_id, name, _, _, _ in employees:
+            self.create_employee_tab(employee_id, name)
+    
+    def create_employee_tab(self, employee_id, name):
+        """Belirli bir çalışan için sekme oluşturur"""
+        # Bu çalışan için zaten bir sekme varsa, tekrar oluşturma
+        if employee_id in self.employee_tabs:
+            return
+        
+        # Çalışan için zaman takip formu oluştur
+        time_form = TimeTrackingForm(self.db)
+        time_form.current_employee_id = employee_id
+        
+        # Çalışan combobox'ını güncelle
+        for i in range(time_form.employee_combo.count()):
+            if time_form.employee_combo.itemData(i) == employee_id:
+                time_form.employee_combo.setCurrentIndex(i)
+                break
+        
+        # Verileri yükle
+        time_form.load_saved_records()
+        time_form.calculate_total_hours()
+        
+        # Sekmeyi ekle
+        tab_index = self.tabs.addTab(time_form, f"{name}")
+        self.employee_tabs[employee_id] = tab_index
+    
+    def on_employee_selected(self, employee_id, name):
+        """Çalışan seçildiğinde çağrılır"""
+        try:
+            # Çalışan için sekme oluştur veya varsa o sekmeye geç
+            if employee_id in self.employee_tabs:
+                # Var olan sekmeye geç
+                self.tabs.setCurrentIndex(self.employee_tabs[employee_id])
+            else:
+                # Yeni sekme oluştur
+                self.create_employee_tab(employee_id, name)
+                # Yeni sekmeye geç
+                self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        except Exception as e:
+            print(f"Hata: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
