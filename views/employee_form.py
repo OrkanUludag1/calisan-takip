@@ -64,15 +64,34 @@ class EmployeeDialog(QDialog):
     
     def get_values(self):
         """Form değerlerini döndürür"""
-        try:
-            return {
-                'name': self.name_input.text().strip(),
-                'weekly_salary': float(self.weekly_salary_input.text()),
-                'daily_food': float(self.daily_food_input.text()),
-                'daily_transport': float(self.daily_transport_input.text())
-            }
-        except ValueError:
+        name = self.name_input.text().strip()
+        
+        # İsim boş ise None döndür
+        if not name:
             return None
+        
+        # Sayısal değerler boş ise 0 olarak kabul et
+        try:
+            weekly_salary = float(self.weekly_salary_input.text()) if self.weekly_salary_input.text().strip() else 0
+        except ValueError:
+            weekly_salary = 0
+            
+        try:
+            daily_food = float(self.daily_food_input.text()) if self.daily_food_input.text().strip() else 0
+        except ValueError:
+            daily_food = 0
+            
+        try:
+            daily_transport = float(self.daily_transport_input.text()) if self.daily_transport_input.text().strip() else 0
+        except ValueError:
+            daily_transport = 0
+        
+        return {
+            'name': name,
+            'weekly_salary': weekly_salary,
+            'daily_food': daily_food,
+            'daily_transport': daily_transport
+        }
 
 class EmployeeForm(QWidget):
     """Çalışan formu"""
@@ -86,7 +105,10 @@ class EmployeeForm(QWidget):
     
     def __init__(self, db=None, parent=None):
         super().__init__(parent)
-        self.db = db if db is not None else EmployeeDB()
+        if db is None:
+            self.db = EmployeeDB()
+        else:
+            self.db = db
         self.current_employee_id = None
         self.initUI()
     
@@ -144,23 +166,19 @@ class EmployeeForm(QWidget):
         # Menüyü oluştur
         menu = QMenu(self)
         
-        # Çalışan Ekle seçeneği her durumda gösterilir
-        add_action = menu.addAction("Çalışan Ekle")
-        add_action.triggered.connect(self.add_employee)
-        
-        # Geçerli bir öğe yoksa veya başlık satırına tıklandıysa sadece Çalışan Ekle seçeneğini göster
+        # Geçerli bir öğe yoksa veya başlık satırına tıklandıysa
         if not item or item.row() == 0:
+            # Çalışan Ekle seçeneğini göster
+            add_action = menu.addAction("Çalışan Ekle")
+            add_action.triggered.connect(self.add_employee)
             action = menu.exec_(self.employee_list.mapToGlobal(position))
-            if action == add_action:
-                self.add_employee()
             return
-            
+        
         # Çalışanın ID'sini ve aktif durumunu al
         employee_id = item.data(Qt.UserRole)
         is_active = item.data(Qt.UserRole + 1)
         
         # Diğer menü eylemleri
-        menu.addSeparator()
         edit_action = menu.addAction("Düzenle")
         edit_action.triggered.connect(lambda: self.edit_employee(employee_id=employee_id))
         
@@ -186,10 +204,7 @@ class EmployeeForm(QWidget):
         
         # Seçilen eyleme göre işlem yap
         if action is not None:
-            if action == add_action:
-                self.add_employee()
-            
-            elif deactivate_action is not None and action == deactivate_action:
+            if deactivate_action is not None and action == deactivate_action:
                 # Aktif/Pasif durumunu değiştir
                 self.toggle_employee_active(employee_id, False)
             
@@ -282,16 +297,8 @@ class EmployeeForm(QWidget):
         while self.employee_list.rowCount() > 1:
             self.employee_list.removeRow(1)
         
-        # Doğrudan veritabanından çalışanları al
-        conn = sqlite3.connect('employee.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, name, weekly_salary, daily_food, daily_transport, is_active 
-            FROM employees 
-            ORDER BY name
-        ''')
-        employees = cursor.fetchall()
-        conn.close()
+        # Veritabanı sınıfını kullanarak çalışanları al
+        employees = self.db.get_employees()
         
         print(f"Veritabanından {len(employees)} çalışan alındı")
         
@@ -330,10 +337,6 @@ class EmployeeForm(QWidget):
                     item.setFont(font)
                     item.setForeground(QBrush(QColor("#FF6B6B")))  # Kırmızımsı renk
                     
-                    # Pasif olduğunu belirtmek için isim yanına (Pasif) ekle
-                    if item == name_item:
-                        item.setText(f"{name} (Pasif)")
-    
     def format_currency(self, value):
         """Para birimini formatlar"""
         return f"{value:,.2f} ₺".replace(",", ".")

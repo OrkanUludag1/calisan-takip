@@ -7,7 +7,13 @@ class EmployeeDB:
     
     def __init__(self, db_file="employee.db"):
         """Veritabanı bağlantısını başlatır"""
-        self.db_file = db_file
+        # Tam yolu kullanarak veritabanı dosyasına erişim
+        import os
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_dir = os.path.dirname(current_dir)
+        self.db_file = os.path.join(project_dir, db_file)
+        print(f"DEBUG - Veritabanı dosyası: {self.db_file}")
+        
         self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
@@ -66,18 +72,18 @@ class EmployeeDB:
         """Yeni çalışan ekler"""
         cursor = self.conn.cursor()
         
-        # İsmin ilk harfini büyük yap
-        name = name.strip().title()
+        # İsmi büyük harfe çevir
+        name = name.strip().upper()
         
-        # Aynı isimde aktif çalışan var mı kontrol et
+        # Aynı isimde çalışan var mı kontrol et (aktif veya pasif)
         cursor.execute('''
-        SELECT id FROM employees 
-        WHERE name = ? AND is_active = 1
+        SELECT id, is_active FROM employees 
+        WHERE name = ?
         ''', (name,))
         
         existing_employee = cursor.fetchone()
         if existing_employee:
-            # Aynı isimde aktif çalışan varsa False döndür
+            # Aynı isimde çalışan varsa False döndür
             return False
         
         cursor.execute('''
@@ -94,8 +100,8 @@ class EmployeeDB:
         """Çalışan bilgilerini günceller"""
         cursor = self.conn.cursor()
         
-        # İsmin ilk harfini büyük yap
-        name = name.strip().title()
+        # İsmi büyük harfe çevir
+        name = name.strip().upper()
         
         cursor.execute('''
         UPDATE employees
@@ -123,9 +129,13 @@ class EmployeeDB:
         cursor.execute('''
             SELECT id, name, weekly_salary, daily_food, daily_transport, is_active 
             FROM employees 
-            ORDER BY name
+            ORDER BY is_active DESC, weekly_salary DESC
         ''')
-        return cursor.fetchall()
+        employees = cursor.fetchall()
+        print(f"DEBUG - EmployeeDB.get_employees: {len(employees)} çalışan bulundu")
+        for emp in employees:
+            print(f"DEBUG - DB: ID: {emp[0]}, İsim: {emp[1]}, Aktif: {emp[5]}, Ücret: {emp[2]}")
+        return employees
     
     def get_employee(self, employee_id):
         """ID'ye göre çalışan bilgilerini getirir"""
@@ -153,31 +163,38 @@ class EmployeeDB:
         
         self.conn.commit()
     
-    def save_work_hours(self, employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active=1):
+    def save_work_hours(self, employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active=1, day_active=None):
         """Çalışma saatlerini kaydeder"""
         cursor = self.conn.cursor()
         
         # Önce bu tarih için kayıt var mı kontrol et
         cursor.execute('''
-        SELECT id FROM work_hours 
+        SELECT id, day_active FROM work_hours 
         WHERE employee_id = ? AND date = ?
         ''', (employee_id, date))
         
         record = cursor.fetchone()
         
+        # Eğer day_active parametresi None ise ve kayıt varsa, mevcut değeri koru
+        if day_active is None and record:
+            day_active = record[1]
+        # Eğer day_active parametresi None ise ve kayıt yoksa, varsayılan olarak 1 (aktif) yap
+        elif day_active is None:
+            day_active = 1
+        
         if record:
             # Kayıt varsa güncelle
             cursor.execute('''
             UPDATE work_hours
-            SET entry_time = ?, lunch_start = ?, lunch_end = ?, exit_time = ?, is_active = ?
+            SET entry_time = ?, lunch_start = ?, lunch_end = ?, exit_time = ?, is_active = ?, day_active = ?
             WHERE employee_id = ? AND date = ?
-            ''', (entry_time, lunch_start, lunch_end, exit_time, is_active, employee_id, date))
+            ''', (entry_time, lunch_start, lunch_end, exit_time, is_active, day_active, employee_id, date))
         else:
             # Kayıt yoksa yeni ekle
             cursor.execute('''
-            INSERT INTO work_hours (employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active))
+            INSERT INTO work_hours (employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active, day_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active, day_active))
         
         self.conn.commit()
     
@@ -233,7 +250,7 @@ class EmployeeDB:
         """Belirli bir tarih için çalışma saatlerini getirir"""
         cursor = self.conn.cursor()
         cursor.execute('''
-        SELECT entry_time, lunch_start, lunch_end, exit_time, is_active
+        SELECT entry_time, lunch_start, lunch_end, exit_time, is_active, day_active
         FROM work_hours
         WHERE employee_id = ? AND date = ?
         ''', (employee_id, date))
@@ -342,3 +359,22 @@ class EmployeeDB:
         
         self.conn.commit()
         return cursor.lastrowid
+
+    def update_all_employee_names_to_uppercase(self):
+        """Tüm çalışanların isimlerini büyük harfe çevirir"""
+        cursor = self.conn.cursor()
+        
+        # Önce tüm çalışanları al
+        cursor.execute('SELECT id, name FROM employees')
+        employees = cursor.fetchall()
+        
+        # Her çalışanın ismini büyük harfe çevir
+        for employee_id, name in employees:
+            uppercase_name = name.strip().upper()
+            # Eğer isim zaten büyük harfse güncelleme yapma
+            if name != uppercase_name:
+                cursor.execute('UPDATE employees SET name = ? WHERE id = ?', 
+                              (uppercase_name, employee_id))
+        
+        self.conn.commit()
+        return len(employees)

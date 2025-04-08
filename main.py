@@ -18,6 +18,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.db = EmployeeDB()
+        
+        # Tüm çalışan isimlerini büyük harfe çevir
+        self.db.update_all_employee_names_to_uppercase()
+        
         self.employee_tabs = {}  # Çalışan sekmeleri için sözlük
         self.initUI()
     
@@ -137,10 +141,16 @@ class MainWindow(QMainWindow):
         # Tüm çalışanları al
         employees = self.db.get_employees()
         
+        # Debug için çalışanları yazdır
+        print("DEBUG - Yüklenecek çalışanlar:")
+        for emp in employees:
+            print(f"ID: {emp[0]}, İsim: {emp[1]}, Aktif: {emp[5]}, Ücret: {emp[2]}")
+        
         # Her çalışan için sekme oluştur
-        for employee_id, name, _, _, _, is_active in employees:
+        for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
             # Sadece aktif çalışanlar için sekme oluştur
             if is_active:
+                print(f"DEBUG - Sekme oluşturuluyor: ID: {employee_id}, İsim: {name}, Aktif: {is_active}, Ücret: {weekly_salary}")
                 self.create_employee_tab(employee_id, name)
     
     def create_employee_tab(self, employee_id, name):
@@ -149,8 +159,14 @@ class MainWindow(QMainWindow):
         if employee_id in self.employee_tabs:
             return
         
+        # İsmi büyük harfe çevir
+        name = name.strip().upper()
+        
         # Çalışan için zaman takip formu oluştur
         time_form = TimeTrackingForm(self.db, employee_id)
+        
+        # Çalışan adını form'a aktar
+        time_form.set_employee_data(employee_id, name)
         
         # Sekmeyi ekle
         tab_index = self.tabs.addTab(time_form, f"{name}")

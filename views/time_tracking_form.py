@@ -405,9 +405,24 @@ class TimeTrackingForm(QWidget):
             day_item.setTextAlignment(Qt.AlignCenter)
             self.days_table.setItem(row, 0, day_item)
             
-            # Durum hücresi
+            # Veritabanında kayıtlı çalışma saatlerini kontrol et
+            date_str = current_day.toString("yyyy-MM-dd")
+            saved_record = None
+            
+            if self.current_employee_id:
+                saved_record = self.db.get_work_hours(self.current_employee_id, date_str)
+            
+            # Durum hücresi - Hafta sonu günleri her zaman pasif olarak ayarla
             status_checkbox = QCheckBox()
-            status_checkbox.setChecked(not is_weekend)  # Hafta içi günler aktif, hafta sonu günler pasif
+            
+            if saved_record:
+                # Kaydedilmiş kayıt varsa, day_active değerini kullan
+                is_active = saved_record[5] == 1 if len(saved_record) > 5 else (not is_weekend)
+            else:
+                # Kaydedilmiş kayıt yoksa, hafta sonu günleri pasif olarak ayarla
+                is_active = not is_weekend
+            
+            status_checkbox.setChecked(is_active)
             status_checkbox.stateChanged.connect(lambda state, r=row: self.on_day_status_changed(r))
             self.days_table.setCellWidget(row, 1, status_checkbox)
             self.day_status_checkboxes.append(status_checkbox)
@@ -415,12 +430,21 @@ class TimeTrackingForm(QWidget):
             # Saat hücreleri
             for col, default_time in enumerate([default_entry, default_lunch_start, default_lunch_end, default_exit], start=2):
                 time_edit = CustomTimeEdit()  # Özel TimeEdit sınıfını kullan
-                time_edit.setTime(default_time)
+                
+                # Kaydedilmiş saat varsa kullan
+                if saved_record and col - 2 < len(saved_record):
+                    saved_time_str = saved_record[col - 2]
+                    if saved_time_str:
+                        hours, minutes = map(int, saved_time_str.split(':'))
+                        time_edit.setTime(QTime(hours, minutes))
+                else:
+                    time_edit.setTime(default_time)
+                    
                 time_edit.timeChanged.connect(lambda time, r=row: self.on_time_changed(r))
                 self.days_table.setCellWidget(row, col, time_edit)
             
-            # Hafta sonu günlerini pasif yap
-            if is_weekend:
+            # Pasif günleri görsel olarak işaretle
+            if not is_active:
                 # Gün hücresini pasif yap
                 font = day_item.font()
                 font.setItalic(True)
@@ -616,11 +640,12 @@ class TimeTrackingForm(QWidget):
         lunch_end = self.days_table.cellWidget(row, 4).time().toString("HH:mm")
         exit_time = self.days_table.cellWidget(row, 5).time().toString("HH:mm")
         
-        # Veritabanına kaydet
+        # Veritabanına kaydet - day_active parametresini de ekle
         self.db.save_work_hours(
             self.current_employee_id, date_str, 
             entry_time, lunch_start, lunch_end, exit_time, 
-            1 if is_active else 0
+            1 if is_active else 0,
+            1 if is_active else 0  # day_active parametresi
         )
     
     def auto_save_all(self):
