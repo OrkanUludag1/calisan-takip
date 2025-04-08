@@ -31,6 +31,9 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1300, 700)
         self.setWindowIcon(QIcon("icon.png"))
         
+        # Pencere boyutunu sabitle
+        self.setFixedSize(1300, 700)
+        
         # Ana widget ve layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
