@@ -130,7 +130,7 @@ class EmployeeForm(QWidget):
         
         for col, header in enumerate(headers):
             item = QTableWidgetItem(header)
-            item.setBackground(QColor("#34495e"))
+            item.setBackground(QColor("#4a86e8"))
             item.setForeground(QBrush(QColor("white")))
             item.setFont(QFont("", -1, QFont.Bold))
             item.setFlags(item.flags() & ~Qt.ItemIsEditable & ~Qt.ItemIsSelectable)
