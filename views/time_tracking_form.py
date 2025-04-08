@@ -218,7 +218,7 @@ class TimeTrackingForm(QWidget):
         summary_widget = QWidget()
         summary_widget.setLayout(summary_layout)
         summary_widget.setFixedWidth(250)  # Sabit genişlik
-        summary_widget.setFixedHeight(350)  # Sabit yükseklik - tablonun yüksekliği ile aynı
+        summary_widget.setFixedHeight(450)  # Sabit yükseklik - 450 piksel
         summary_widget.setStyleSheet("""
             QWidget {
                 background-color: #f8f9fa;
