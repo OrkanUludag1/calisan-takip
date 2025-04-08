@@ -227,8 +227,10 @@ class TimeTrackingForm(QWidget):
         
         employees = self.db.get_employees()
         
-        for employee_id, name, _, _, _ in employees:
-            self.employee_combo.addItem(name, employee_id)
+        for employee_id, name, _, _, _, is_active in employees:
+            # Sadece aktif çalışanları ekle
+            if is_active:
+                self.employee_combo.addItem(name, employee_id)
     
     def on_employee_changed(self, index):
         """Çalışan değiştiğinde çağrılır"""
@@ -390,13 +392,13 @@ class TimeTrackingForm(QWidget):
                 # Bu tarih için kayıt var mı kontrol et
                 record_found = False
                 for record in records:
-                    if record[0] == current_date_str:
+                    if record['date'] == current_date_str:
                         # Kayıt bulundu, değerleri ayarla
-                        entry_time = QTime.fromString(record[1], "HH:mm")
-                        lunch_start = QTime.fromString(record[2], "HH:mm")
-                        lunch_end = QTime.fromString(record[3], "HH:mm")
-                        exit_time = QTime.fromString(record[4], "HH:mm")
-                        is_active = bool(record[5])
+                        entry_time = QTime.fromString(record['entry_time'], "HH:mm")
+                        lunch_start = QTime.fromString(record['lunch_start'], "HH:mm")
+                        lunch_end = QTime.fromString(record['lunch_end'], "HH:mm")
+                        exit_time = QTime.fromString(record['exit_time'], "HH:mm")
+                        is_active = bool(record['day_active'])
                         
                         # Zaman değerlerini ayarla - None kontrolü ekle
                         entry_widget = self.days_table.cellWidget(row, 2)
@@ -420,12 +422,14 @@ class TimeTrackingForm(QWidget):
                         record_found = True
                         break
             
-            # Kayıt bulunamadıysa, varsayılan değerleri kullan
-            if not record_found and row < len(self.day_status_checkboxes):
-                # Durum checkbox'ını aktif yap
-                self.day_status_checkboxes[row].setChecked(True)
+                # Kayıt bulunamadıysa, varsayılan değerleri kullan
+                if not record_found and row < len(self.day_status_checkboxes):
+                    # Durum checkbox'ını aktif yap
+                    self.day_status_checkboxes[row].setChecked(True)
         except Exception as e:
-            print(f"Kayıtları yüklerken hata: {e}")
+            # Hata mesajını sadece gerçek bir hata varsa göster
+            if str(e) != "0":
+                print(f"Kayıtları yüklerken hata: {e}")
     
     def on_time_changed(self, row):
         """Zaman değiştiğinde çağrılır"""
@@ -520,7 +524,8 @@ class TimeTrackingForm(QWidget):
         if not employee:
             return
         
-        _, _, weekly_salary, daily_food, daily_transport = employee
+        # get_employee 6 değer döndürüyor, son değer is_active olduğu için onu yok sayıyoruz
+        _, _, weekly_salary, daily_food, daily_transport, _ = employee
         
         # Toplam ödemeleri hesapla
         food_allowance = daily_food * active_days

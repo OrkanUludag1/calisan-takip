@@ -79,9 +79,9 @@ class EmployeeForm(QWidget):
     employee_updated = pyqtSignal()     # Çalışan güncellendiğinde
     employee_deleted = pyqtSignal()     # Çalışan silindiğinde
     
-    def __init__(self, parent=None):
+    def __init__(self, db=None, parent=None):
         super().__init__(parent)
-        self.db = EmployeeDB()
+        self.db = db if db is not None else EmployeeDB()
         self.current_employee_id = None
         self.initUI()
     

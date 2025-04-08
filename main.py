@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
         """)
         
         # Çalışan formu
-        self.employee_form = EmployeeForm(self.db)
+        self.employee_form = EmployeeForm(db=self.db)
         self.employee_form.employee_selected.connect(self.on_employee_selected)
         self.tabs.addTab(self.employee_form, "Çalışan Yönetimi")
         
@@ -137,8 +137,10 @@ class MainWindow(QMainWindow):
         employees = self.db.get_employees()
         
         # Her çalışan için sekme oluştur
-        for employee_id, name, _, _, _ in employees:
-            self.create_employee_tab(employee_id, name)
+        for employee_id, name, _, _, _, is_active in employees:
+            # Sadece aktif çalışanlar için sekme oluştur
+            if is_active:
+                self.create_employee_tab(employee_id, name)
     
     def create_employee_tab(self, employee_id, name):
         """Belirli bir çalışan için sekme oluşturur"""
