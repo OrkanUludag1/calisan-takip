@@ -28,7 +28,7 @@ class MainWindow(QMainWindow):
     def initUI(self):
         """Kullanıcı arayüzünü başlatır"""
         self.setWindowTitle("Çalışan Takip Sistemi")
-        self.setGeometry(100, 100, 900, 700)
+        self.setGeometry(100, 100, 1200, 700)
         self.setWindowIcon(QIcon("icon.png"))
         
         # Ana widget ve layout
