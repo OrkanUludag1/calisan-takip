@@ -10,7 +10,7 @@ from PyQt5.QtGui import QIcon
 
 from models.database import EmployeeDB
 from views.employee_form import EmployeeForm
-from views.time_tracking_form import TimeTrackingForm
+from views.time_select_form import TimeSelectForm
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
@@ -22,7 +22,6 @@ class MainWindow(QMainWindow):
         # Tüm çalışan isimlerini büyük harfe çevir
         self.db.update_all_employee_names_to_uppercase()
         
-        self.employee_tabs = {}  # Çalışan sekmeleri için sözlük
         self.initUI()
     
     def initUI(self):
@@ -71,12 +70,11 @@ class MainWindow(QMainWindow):
         
         # Çalışan formu
         self.employee_form = EmployeeForm(db=self.db)
-        self.employee_form.employee_selected.connect(self.on_employee_selected)
-        self.employee_form.employee_activated.connect(self.on_employee_activated)  
         self.tabs.addTab(self.employee_form, "ÇALIŞANLAR")
         
-        # Tüm çalışanlar için sekmeleri oluştur
-        self.load_employee_tabs()
+        # Süre seçim formu
+        self.time_select_form = TimeSelectForm(db=self.db)
+        self.tabs.addTab(self.time_select_form, "SÜRE")
         
         main_layout.addWidget(self.tabs)
         
@@ -119,6 +117,7 @@ class MainWindow(QMainWindow):
                 border: none;
                 border-radius: 4px;
                 padding: 8px 16px;
+                text-align: center;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -131,102 +130,20 @@ class MainWindow(QMainWindow):
                 background-color: #bdc3c7;
                 color: #7f8c8d;
             }
+            QCheckBox {
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #bdc3c7;
+                border-radius: 2px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #3498db;
+                border: 1px solid #3498db;
+            }
         """)
-
-    def load_employee_tabs(self):
-        """Tüm çalışanlar için sekmeleri yükler"""
-        # Önce mevcut sekmeleri temizle (ilk sekme hariç)
-        while self.tabs.count() > 1:
-            self.tabs.removeTab(1)
-        
-        self.employee_tabs = {}  # Sekme sözlüğünü temizle
-        
-        # Tüm çalışanları al
-        employees = self.db.get_employees()
-        
-        # Debug için çalışanları yazdır
-        print("DEBUG - Yüklenecek çalışanlar:")
-        for emp in employees:
-            print(f"ID: {emp[0]}, İsim: {emp[1]}, Aktif: {emp[5]}, Ücret: {emp[2]}")
-        
-        # Her çalışan için sekme oluştur
-        for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
-            # Sadece aktif çalışanlar için sekme oluştur
-            if is_active:
-                print(f"DEBUG - Sekme oluşturuluyor: ID: {employee_id}, İsim: {name}, Aktif: {is_active}, Ücret: {weekly_salary}")
-                self.create_employee_tab(employee_id, name)
-    
-    def create_employee_tab(self, employee_id, name):
-        """Belirli bir çalışan için sekme oluşturur"""
-        # Bu çalışan için zaten bir sekme varsa, tekrar oluşturma
-        if employee_id in self.employee_tabs:
-            return
-        
-        # İsmi büyük harfe çevir
-        name = name.strip().upper()
-        
-        # Çalışan için zaman takip formu oluştur
-        time_form = TimeTrackingForm(self.db, employee_id)
-        
-        # Çalışan adını form'a aktar
-        time_form.set_employee_data(employee_id, name)
-        
-        # Sekmeyi ekle
-        tab_index = self.tabs.addTab(time_form, f"{name}")
-        self.employee_tabs[employee_id] = tab_index
-    
-    def on_employee_selected(self, employee_id, name):
-        """Çalışan seçildiğinde çağrılır"""
-        try:
-            # Çalışan için sekme oluştur veya varsa o sekmeye geç
-            if employee_id in self.employee_tabs:
-                # Var olan sekmeye geç
-                self.tabs.setCurrentIndex(self.employee_tabs[employee_id])
-            else:
-                # Yeni sekme oluştur
-                self.create_employee_tab(employee_id, name)
-                # Yeni sekmeye geç
-                self.tabs.setCurrentIndex(self.tabs.count() - 1)
-        except Exception as e:
-            print(f"Hata: {e}")
-
-    def on_employee_activated(self, employee_id, active_status):
-        """Çalışan aktif/pasif durumu değiştiğinde çağrılır"""
-        if active_status:
-            # Çalışan aktif yapıldıysa ve sekmesi yoksa, hemen aç
-            if employee_id not in self.employee_tabs:
-                # Çalışan bilgilerini al
-                employee = self.db.get_employee(employee_id)
-                if employee:
-                    # Çalışan adını al
-                    _, name, _, _, _, _ = employee
-                    # Sekmeyi oluştur
-                    self.create_employee_tab(employee_id, name)
-        else:
-            # Eğer çalışan pasif yapıldıysa, sekmesini kapat
-            if employee_id in self.employee_tabs:
-                tab_index = self.employee_tabs[employee_id]
-                self.tabs.removeTab(tab_index)
-                del self.employee_tabs[employee_id]
-                
-                # Kalan sekmelerin indekslerini güncelle
-                self.update_tab_indices()
-    
-    def update_tab_indices(self):
-        """Sekme indekslerini günceller"""
-        # Tüm sekmelerin yeni indekslerini güncelle
-        new_employee_tabs = {}
-        for employee_id, old_index in self.employee_tabs.items():
-            # Yeni indeksi bul
-            for i in range(self.tabs.count()):
-                if i > 0:  # İlk sekme her zaman çalışan yönetimi
-                    widget = self.tabs.widget(i)
-                    if isinstance(widget, TimeTrackingForm) and widget.current_employee_id == employee_id:
-                        new_employee_tabs[employee_id] = i
-                        break
-        
-        # Eski sözlüğü yenisiyle değiştir
-        self.employee_tabs = new_employee_tabs
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

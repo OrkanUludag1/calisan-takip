@@ -66,6 +66,20 @@ class EmployeeDB:
             cursor.execute('UPDATE work_hours SET day_active = 1')
             self.conn.commit()
         
+        # Ek ödeme/kesinti tablosu
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER,
+            week_start_date TEXT,
+            payment_type TEXT,
+            amount REAL,
+            description TEXT,
+            is_permanent INTEGER DEFAULT 0,
+            FOREIGN KEY (employee_id) REFERENCES employees (id)
+        )
+        ''')
+        
         self.conn.commit()
     
     def add_employee(self, name, weekly_salary, daily_food, daily_transport):
@@ -378,3 +392,110 @@ class EmployeeDB:
         
         self.conn.commit()
         return len(employees)
+
+    def get_active_employees(self):
+        """Sadece aktif çalışanları getirir"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+        SELECT id, name, weekly_salary, daily_food, daily_transport, is_active
+        FROM employees
+        WHERE is_active = 1
+        ORDER BY name
+        ''')
+        
+        return cursor.fetchall()
+
+    def add_payment(self, employee_id, week_start_date, payment_type, amount, description="", is_permanent=0):
+        """Ek ödeme, kesinti veya sabit ödeme ekler
+        
+        payment_type: 'bonus' (ek ödeme), 'deduction' (kesinti), 'permanent' (sabit ek ödeme)
+        is_permanent: Sabit ödeme olup olmadığını belirtir (1: evet, 0: hayır)
+        """
+        cursor = self.conn.cursor()
+        
+        cursor.execute('''
+        INSERT INTO payments (employee_id, week_start_date, payment_type, amount, description, is_permanent)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (employee_id, week_start_date, payment_type, amount, description, is_permanent))
+        
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_weekly_payments(self, employee_id, week_start_date):
+        """Haftalık ek ödemeleri/kesintileri getirir"""
+        cursor = self.conn.cursor()
+        
+        # Belirli haftaya ait ek ödemeler/kesintiler
+        cursor.execute('''
+        SELECT id, payment_type, amount, description, is_permanent
+        FROM payments
+        WHERE employee_id = ? AND week_start_date = ?
+        ''', (employee_id, week_start_date))
+        
+        week_payments = cursor.fetchall()
+        
+        # Sabit ek ödemeleri getir (tüm haftalara uygulanır)
+        cursor.execute('''
+        SELECT id, payment_type, amount, description, is_permanent
+        FROM payments
+        WHERE employee_id = ? AND is_permanent = 1 AND 
+        (week_start_date = ? OR week_start_date <= ?)
+        ''', (employee_id, week_start_date, week_start_date))
+        
+        permanent_payments = cursor.fetchall()
+        
+        # Tüm ödemeleri birleştir
+        all_payments = list(week_payments)
+        
+        # Sabit ödemeleri ekle (bu hafta için zaten eklenmemişse)
+        payment_ids = [p[0] for p in week_payments]
+        for payment in permanent_payments:
+            if payment[0] not in payment_ids:
+                all_payments.append(payment)
+        
+        return all_payments
+
+    def update_payment(self, payment_id, amount, description=None):
+        """Ek ödeme, kesinti veya sabit ödeme günceller"""
+        cursor = self.conn.cursor()
+        
+        # Açıklama güncellenmeyecekse sadece miktarı güncelle
+        if description is None:
+            cursor.execute('''
+            UPDATE payments
+            SET amount = ?
+            WHERE id = ?
+            ''', (amount, payment_id))
+        else:
+            cursor.execute('''
+            UPDATE payments
+            SET amount = ?, description = ?
+            WHERE id = ?
+            ''', (amount, description, payment_id))
+        
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_payment(self, payment_id):
+        """Ek ödeme, kesinti veya sabit ödemeyi siler"""
+        cursor = self.conn.cursor()
+        
+        cursor.execute('''
+        DELETE FROM payments
+        WHERE id = ?
+        ''', (payment_id,))
+        
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_payment(self, payment_id):
+        """Belirli bir ödeme kaydını getirir"""
+        cursor = self.conn.cursor()
+        
+        cursor.execute('''
+        SELECT id, employee_id, week_start_date, payment_type, amount, description, is_permanent
+        FROM payments
+        WHERE id = ?
+        ''', (payment_id,))
+        
+        return cursor.fetchone()

@@ -97,11 +97,9 @@ class EmployeeForm(QWidget):
     """Çalışan formu"""
     
     # Sinyaller
-    employee_selected = pyqtSignal(int, str)  # id, name
     employee_added = pyqtSignal()       # Yeni çalışan eklendiğinde
     employee_updated = pyqtSignal()     # Çalışan güncellendiğinde
     employee_deleted = pyqtSignal()     # Çalışan silindiğinde
-    employee_activated = pyqtSignal(int, bool)  # employee_id, active_status
     
     def __init__(self, db=None, parent=None):
         super().__init__(parent)
@@ -254,7 +252,6 @@ class EmployeeForm(QWidget):
                     )
                     return
                 
-                self.employee_selected.emit(employee_id, values['name'])
                 self.employee_added.emit()  # Sinyal yayınla
                 self.load_employees()
     
@@ -288,7 +285,6 @@ class EmployeeForm(QWidget):
         """Çalışanın aktif/pasif durumunu değiştirir"""
         if self.db.toggle_employee_active(employee_id, active_status):
             self.employee_updated.emit()  # Sinyal yayınla
-            self.employee_activated.emit(employee_id, active_status)  # Yeni sinyal
             self.load_employees()
     
     def load_employees(self):
