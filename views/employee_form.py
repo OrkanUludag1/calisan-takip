@@ -143,6 +143,18 @@ class EmployeeForm(QWidget):
         self.employee_list.setSelectionBehavior(QTableWidget.SelectRows)
         self.employee_list.setSelectionMode(QTableWidget.SingleSelection)
         
+        # Kaydırma çubuklarını kaldır
+        self.employee_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.employee_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Başlık gizli olsa da horizontalHeader var, sadece görünmüyor
+        # İçeriğe göre genişlik ayarla
+        header = self.employee_list.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Dikey başlık gizli olduğu için doğrudan satır yüksekliğini ayarlama
+        self.employee_list.resizeRowsToContents()
+        
         # Çift tıklama ile düzenleme
         self.employee_list.doubleClicked.connect(self.edit_employee)
         
@@ -150,8 +162,14 @@ class EmployeeForm(QWidget):
         self.employee_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.employee_list.customContextMenuRequested.connect(self.show_context_menu)
         
+        # Tabloyu ortalamak için yatay layout oluştur
+        h_layout = QHBoxLayout()
+        h_layout.addStretch()
+        h_layout.addWidget(self.employee_list)
+        h_layout.addStretch()
+        
         # Layout'ları birleştir
-        layout.addWidget(self.employee_list)
+        layout.addLayout(h_layout, 1)  # Stretch factor 1 ile esnek yükseklik sağla
         
         # Çalışanları yükle
         self.load_employees()
@@ -296,10 +314,7 @@ class EmployeeForm(QWidget):
         # Veritabanı sınıfını kullanarak çalışanları al
         employees = self.db.get_employees()
         
-        print(f"Veritabanından {len(employees)} çalışan alındı")
-        
         for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
-            print(f"Çalışan yükleniyor: ID: {employee_id}, İsim: {name}, Aktif: {is_active}")
             row = self.employee_list.rowCount()
             self.employee_list.insertRow(row)
             
@@ -308,8 +323,11 @@ class EmployeeForm(QWidget):
             name_item.setData(Qt.UserRole, employee_id)
             name_item.setData(Qt.UserRole + 1, is_active)
             
+            # Saatlik ücreti haftalık ücrete çevir (50 ile çarp)
+            weekly_salary_value = weekly_salary * 50
+            
             # Diğer verileri ekle
-            salary_item = QTableWidgetItem(self.format_currency(weekly_salary))
+            salary_item = QTableWidgetItem(self.format_currency(weekly_salary_value))
             food_item = QTableWidgetItem(self.format_currency(daily_food))
             transport_item = QTableWidgetItem(self.format_currency(daily_transport))
             
@@ -332,7 +350,10 @@ class EmployeeForm(QWidget):
                     font.setStrikeOut(True)  # Üstü çizili göster
                     item.setFont(font)
                     item.setForeground(QBrush(QColor("#FF6B6B")))  # Kırmızımsı renk
-                    
+        
+        # Satır yüksekliklerini içeriğe göre ayarla
+        self.employee_list.resizeRowsToContents()
+    
     def format_currency(self, value):
         """Para birimini formatlar"""
         return f"{value:,.2f} ₺".replace(",", ".")

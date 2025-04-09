@@ -21,7 +21,7 @@ var/
 *.egg
 
 # SQLite veritabanı
-*.db
+# *.db
 
 # IDE dosyaları
 .idea/

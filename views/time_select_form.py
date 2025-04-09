@@ -197,6 +197,7 @@ class TimeSelectForm(QWidget):
         self.db = db
         self.current_time_form = None
         self.employees = []
+        self.time_tracking_form = None  # Zaman takibi formuna erişim için özellik
         
         self.initUI()
         self.load_employees()
@@ -291,21 +292,22 @@ class TimeSelectForm(QWidget):
     
     def load_employee(self, employee_id, employee_name):
         """Belirli bir çalışanı yükler"""
-        # Mevcut form varsa kaldır
+        # Mevcut formu temizle
         if self.current_time_form:
-            # Önce layout'tan kaldır
-            for i in reversed(range(self.time_form_container.count())):
-                item = self.time_form_container.itemAt(i)
-                if item.widget():
-                    item.widget().setParent(None)
+            self.time_form_container.removeWidget(self.current_time_form)
+            self.current_time_form.deleteLater()
         
         # Yeni zaman takip formunu oluştur
         self.current_time_form = TimeTrackingForm(self.db, employee_id)
+        self.time_tracking_form = self.current_time_form  # Zaman takibi formunu ana pencereden erişilebilir yap
         self.current_time_form.set_employee(employee_id, employee_name)
+        
+        # Çalışanın aktif olup olmadığını kontrol et
+        is_active = self.current_time_form.check_employee_active()
         
         # Container'a ekle
         self.time_form_container.addWidget(self.current_time_form)
-
+    
     def show_employee_context_menu(self, position):
         """Çalışan listesinde sağ tık menüsünü gösterir"""
         # Tıklanan öğeyi al

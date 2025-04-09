@@ -11,7 +11,7 @@ Bu program, çalışanların haftalık çalışma saatlerini ve ödemelerini tak
    ```
 3. Programı çalıştırın:
    ```
-   python calisan_takip.py
+   python main.py
    ```
 
 ## Özellikler

@@ -214,6 +214,9 @@ class CustomTimeEdit(QTimeEdit):
 class TimeTrackingForm(QWidget):
     """Zaman takibi formu"""
     
+    # Zaman değiştiğinde yayınlanacak sinyal
+    time_changed_signal = pyqtSignal()
+    
     def __init__(self, db, employee_id=None):
         super().__init__()
         self.db = db
@@ -608,6 +611,9 @@ class TimeTrackingForm(QWidget):
         """Zaman değiştiğinde çağrılır"""
         self.auto_save_row(row)
         self.calculate_total_hours()
+        
+        # Sinyali yayınla - haftalık sekmenin güncellenmesi için
+        self.time_changed_signal.emit()
     
     def auto_save_row(self, row):
         """Belirli bir satırı otomatik kaydeder"""
@@ -685,14 +691,20 @@ class TimeTrackingForm(QWidget):
             lunch_end = lunch_end_widget.time()
             exit_time = exit_widget.time()
             
-            # Sabah çalışma saatleri (saniye cinsinden)
-            morning_seconds = entry_time.secsTo(lunch_start)
+            # Sabah çalışma saatleri (saat cinsinden)
+            morning_hours = 0
+            if entry_time.hour() <= lunch_start.hour():  # Normal durum
+                morning_seconds = (lunch_start.hour() * 3600 + lunch_start.minute() * 60) - (entry_time.hour() * 3600 + entry_time.minute() * 60)
+                morning_hours = morning_seconds / 3600.0
             
-            # Öğleden sonra çalışma saatleri (saniye cinsinden)
-            afternoon_seconds = lunch_end.secsTo(exit_time)
+            # Öğleden sonra çalışma saatleri (saat cinsinden)
+            afternoon_hours = 0
+            if lunch_end.hour() <= exit_time.hour():  # Normal durum
+                afternoon_seconds = (exit_time.hour() * 3600 + exit_time.minute() * 60) - (lunch_end.hour() * 3600 + lunch_end.minute() * 60)
+                afternoon_hours = afternoon_seconds / 3600.0
             
             # Toplam çalışma saatleri (saat cinsinden)
-            day_hours = (morning_seconds + afternoon_seconds) / 3600.0
+            day_hours = morning_hours + afternoon_hours
             
             # Negatif değerleri düzelt (zaman çakışmaları veya hatalı giriş)
             if day_hours < 0:
@@ -701,20 +713,26 @@ class TimeTrackingForm(QWidget):
             # Toplam saatlere ekle
             total_hours += day_hours
         
+        # Toplam saati saat ve dakika olarak ayır
+        total_hours_int = int(total_hours)  # Tam saat kısmı
+        total_minutes = int((total_hours - total_hours_int) * 60)  # Dakika kısmı
+        
         # Çalışan bilgilerini al
         employee_info = self.db.get_employee(self.current_employee_id)
         if not employee_info:
             return
         
-        # Saatlik ücreti al (varsayılan 0)
-        hourly_rate = employee_info['weekly_salary'] if employee_info else 0
+        # get_employee metodundan dönen weekly_salary değeri zaten 50 ile çarpılmış haftalık ücret
+        # Bu değeri 50'ye bölerek saatlik ücrete çeviriyoruz
+        weekly_salary = employee_info[2] if employee_info else 0  # Haftalık ücret
+        hourly_rate = weekly_salary / 50  # Saatlik ücret
         
-        # Haftalık ücret hesapla
-        weekly_salary = total_hours * hourly_rate
+        # Haftalık ücret hesapla (çalışma saati x saatlik ücret)
+        earned_salary = total_hours * hourly_rate
         
         # Yol ve yemek ödemeleri (aktif gün sayısına göre)
-        food_allowance = active_days * employee_info['daily_food']  # Günlük yemek ücreti
-        transport_allowance = active_days * employee_info['daily_transport']  # Günlük yol ücreti
+        food_allowance = active_days * employee_info[3]  # daily_food
+        transport_allowance = active_days * employee_info[4]  # daily_transport
         total_allowances = food_allowance + transport_allowance
         
         # Ek ödemeler ve kesintileri al
@@ -736,18 +754,15 @@ class TimeTrackingForm(QWidget):
             elif payment_type_lower in ["kesinti", "ceza", "borç", "borc", "avans", "deduction"]:
                 total_deductions += amount
         
-        # Toplam ek ödeme/kesinti
-        net_payments = total_additions - total_deductions
-        
-        # Etiketleri güncelle
-        self.total_hours_value.setText(f"{total_hours:.1f} saat")
-        self.weekly_salary_value.setText(f"{self.format_currency(weekly_salary)}")
+        # Etiketleri güncelle - toplam saati saat:dakika formatında göster
+        self.total_hours_value.setText(f"{total_hours_int}:{total_minutes:02d}")
+        self.weekly_salary_value.setText(f"{self.format_currency(earned_salary)}")
         self.allowances_value.setText(f"{self.format_currency(total_allowances)}")
         self.additions_value.setText(f"{self.format_currency(total_additions)}")
         self.deductions_value.setText(f"{self.format_currency(total_deductions)}")
         
         # Toplam haftalık ücreti hesapla (ek ödemeler eklenir, kesintiler düşülür)
-        total_weekly_salary = weekly_salary + total_allowances + total_additions - total_deductions
+        total_weekly_salary = earned_salary + total_allowances + total_additions - total_deductions
         self.total_weekly_value.setText(f"{self.format_currency(total_weekly_salary)}")
     
     def set_employee(self, employee_id, employee_name):
@@ -756,6 +771,16 @@ class TimeTrackingForm(QWidget):
             return
         
         self.current_employee_id = employee_id
+        
+        # Çalışanın aktif olup olmadığını kontrol et
+        employee = self.db.get_employee(employee_id)
+        if not employee or not employee[5]:  # is_active değeri
+            # Çalışan pasif, UI'ı temizle
+            self.clear_form()
+            self.employee_name_label.setText(f"{employee_name} (PASİF)")
+            self.summary_employee_name.setText(f"{employee_name} (PASİF)")
+            return
+        
         self.employee_name_label.setText(f"{employee_name}")
         self.summary_employee_name.setText(f"{employee_name}")
         
@@ -795,6 +820,36 @@ class TimeTrackingForm(QWidget):
         self.current_date = date
         self.load_week_days()
     
+    def check_employee_active(self):
+        """Çalışanın aktif olup olmadığını kontrol eder ve pasifse UI'ı günceller"""
+        if not self.current_employee_id:
+            return False
+            
+        # Çalışanın durumunu kontrol et
+        employee = self.db.get_employee(self.current_employee_id)
+        if not employee or not employee[5]:  # is_active değeri
+            # Çalışan pasif, UI'ı temizle
+            self.clear_form()
+            return False
+            
+        return True
+        
+    def clear_form(self):
+        """Formu temizler"""
+        # Tüm tabloları temizle
+        for day_idx in range(7):
+            table = getattr(self, f"day_{day_idx}_table")
+            for row in range(table.rowCount()):
+                for col in range(1, 3):  # Sadece saat sütunlarını temizle
+                    table.setItem(row, col, QTableWidgetItem(""))
+                    
+        # Toplam alanlarını sıfırla
+        self.total_hours_label.setText("Toplam Süre: 0:00")
+        self.total_salary_label.setText("Toplam Ücret: 0.00 ₺")
+        self.total_food_label.setText("Toplam Yemek: 0.00 ₺")
+        self.total_transport_label.setText("Toplam Yol: 0.00 ₺")
+        self.grand_total_label.setText("Genel Toplam: 0.00 ₺")
+
 # Bu blok sadece bu dosya doğrudan çalıştırıldığında çalışır
 if __name__ == "__main__":
     import sys

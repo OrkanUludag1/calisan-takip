@@ -11,6 +11,7 @@ from PyQt5.QtGui import QIcon
 from models.database import EmployeeDB
 from views.employee_form import EmployeeForm
 from views.time_select_form import TimeSelectForm
+from views.weekly_summary_form import WeeklySummaryForm
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
@@ -75,6 +76,22 @@ class MainWindow(QMainWindow):
         # Süre seçim formu
         self.time_select_form = TimeSelectForm(db=self.db)
         self.tabs.addTab(self.time_select_form, "SÜRE")
+        
+        # Haftalık özet formu
+        self.weekly_summary_form = WeeklySummaryForm(db=self.db)
+        self.tabs.addTab(self.weekly_summary_form, "HAFTALIK")
+        
+        # Zaman takibi formundan gelen sinyali haftalık özet formuna bağla
+        # Bu sayede zaman değiştiğinde haftalık özet otomatik olarak güncellenecek
+        self.time_select_form.time_tracking_form.time_changed_signal.connect(self.weekly_summary_form.load_active_employees)
+        
+        # Çalışan durumu değiştiğinde diğer formları güncelle
+        self.employee_form.employee_updated.connect(self.time_select_form.load_employees)
+        self.employee_form.employee_updated.connect(self.weekly_summary_form.load_active_employees)
+        self.employee_form.employee_added.connect(self.time_select_form.load_employees)
+        self.employee_form.employee_added.connect(self.weekly_summary_form.load_active_employees)
+        self.employee_form.employee_deleted.connect(self.time_select_form.load_employees)
+        self.employee_form.employee_deleted.connect(self.weekly_summary_form.load_active_employees)
         
         main_layout.addWidget(self.tabs)
         

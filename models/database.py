@@ -12,70 +12,141 @@ class EmployeeDB:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(current_dir)
         self.db_file = os.path.join(project_dir, db_file)
-        print(f"DEBUG - Veritabanı dosyası: {self.db_file}")
         
         self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
     
     def create_tables(self):
-        """Gerekli tabloları oluşturur"""
+        """Veritabanı tablolarını oluşturur"""
         cursor = self.conn.cursor()
         
-        # Çalışanlar tablosu
+        # Çalışan tablosu
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS employees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
-            weekly_salary REAL,
-            daily_food REAL,
-            daily_transport REAL,
-            is_active INTEGER DEFAULT 1
+            weekly_salary REAL NOT NULL,
+            daily_food REAL NOT NULL,
+            daily_transport REAL NOT NULL,
+            active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         ''')
-
-        # Mevcut kayıtlara is_active sütunu ekle
-        try:
-            cursor.execute('SELECT is_active FROM employees LIMIT 1')
-        except sqlite3.OperationalError:
-            cursor.execute('ALTER TABLE employees ADD COLUMN is_active INTEGER DEFAULT 1')
-            cursor.execute('UPDATE employees SET is_active = 1')
-            self.conn.commit()
         
         # Çalışma saatleri tablosu
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS work_hours (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             employee_id INTEGER,
-            date TEXT,
+            date TEXT NOT NULL,
             entry_time TEXT,
             lunch_start TEXT,
             lunch_end TEXT,
             exit_time TEXT,
-            is_active INTEGER DEFAULT 1,
             day_active INTEGER DEFAULT 1,
             FOREIGN KEY (employee_id) REFERENCES employees (id)
         )
         ''')
         
-        # Mevcut work_hours tablosuna day_active sütunu ekle
+        # Payments tablosunda date sütunu varsa week_start_date olarak yeniden adlandır
         try:
-            cursor.execute('SELECT day_active FROM work_hours LIMIT 1')
-        except sqlite3.OperationalError:
-            cursor.execute('ALTER TABLE work_hours ADD COLUMN day_active INTEGER DEFAULT 1')
-            cursor.execute('UPDATE work_hours SET day_active = 1')
-            self.conn.commit()
+            # Önce mevcut payments tablosunun yapısını kontrol et
+            cursor.execute("PRAGMA table_info(payments)")
+            columns = cursor.fetchall()
+            
+            has_date_column = False
+            has_week_start_date_column = False
+            
+            for column in columns:
+                if column[1] == 'date':
+                    has_date_column = True
+                if column[1] == 'week_start_date':
+                    has_week_start_date_column = True
+            
+            # Eğer date sütunu varsa ve week_start_date sütunu yoksa
+            if has_date_column and not has_week_start_date_column:
+                # Geçici tablo oluştur
+                cursor.execute('''
+                CREATE TABLE payments_temp (
+                    id INTEGER PRIMARY KEY,
+                    employee_id INTEGER,
+                    week_start_date TEXT NOT NULL,
+                    payment_type TEXT,
+                    amount REAL NOT NULL,
+                    description TEXT,
+                    is_permanent INTEGER DEFAULT 0,
+                    FOREIGN KEY (employee_id) REFERENCES employees (id)
+                )
+                ''')
+                
+                # Verileri geçici tabloya kopyala
+                cursor.execute('''
+                INSERT INTO payments_temp (id, employee_id, week_start_date, payment_type, amount, description, is_permanent)
+                SELECT id, employee_id, date, payment_type, amount, description, is_permanent FROM payments
+                ''')
+                
+                # Eski tabloyu sil
+                cursor.execute("DROP TABLE payments")
+                
+                # Geçici tabloyu yeniden adlandır
+                cursor.execute("ALTER TABLE payments_temp RENAME TO payments")
+                
+                self.conn.commit()
+            else:
+                # Ödemeler tablosu
+                cursor.execute('''
+                CREATE TABLE IF NOT EXISTS payments (
+                    id INTEGER PRIMARY KEY,
+                    employee_id INTEGER,
+                    week_start_date TEXT NOT NULL,
+                    payment_type TEXT,
+                    amount REAL NOT NULL,
+                    description TEXT,
+                    is_permanent INTEGER DEFAULT 0,
+                    FOREIGN KEY (employee_id) REFERENCES employees (id)
+                )
+                ''')
+        except Exception as e:
+            # Ödemeler tablosu
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY,
+                employee_id INTEGER,
+                week_start_date TEXT NOT NULL,
+                payment_type TEXT,
+                amount REAL NOT NULL,
+                description TEXT,
+                is_permanent INTEGER DEFAULT 0,
+                FOREIGN KEY (employee_id) REFERENCES employees (id)
+            )
+            ''')
         
-        # Ek ödeme/kesinti tablosu
+        # Haftalık özet tablosu
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS weekly_summaries (
+            id INTEGER PRIMARY KEY,
+            week_start_date TEXT NOT NULL UNIQUE,
+            total_amount REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # Haftalık özet detayları tablosu
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS weekly_summary_details (
+            id INTEGER PRIMARY KEY,
+            summary_id INTEGER,
             employee_id INTEGER,
-            week_start_date TEXT,
-            payment_type TEXT,
-            amount REAL,
-            description TEXT,
-            is_permanent INTEGER DEFAULT 0,
+            name TEXT NOT NULL,
+            total_hours REAL NOT NULL,
+            weekly_salary REAL NOT NULL,
+            food_allowance REAL NOT NULL,
+            transport_allowance REAL NOT NULL,
+            total_additions REAL NOT NULL,
+            total_deductions REAL NOT NULL,
+            total_weekly_salary REAL NOT NULL,
+            FOREIGN KEY (summary_id) REFERENCES weekly_summaries (id),
             FOREIGN KEY (employee_id) REFERENCES employees (id)
         )
         ''')
@@ -100,10 +171,13 @@ class EmployeeDB:
             # Aynı isimde çalışan varsa False döndür
             return False
         
+        # Haftalık ücreti saatlik ücrete çevir (50 saate böl)
+        hourly_rate = weekly_salary / 50
+        
         cursor.execute('''
         INSERT INTO employees (name, weekly_salary, daily_food, daily_transport, is_active)
         VALUES (?, ?, ?, ?, 1)
-        ''', (name, weekly_salary, daily_food, daily_transport))
+        ''', (name, hourly_rate, daily_food, daily_transport))
         
         self.conn.commit()
         last_id = cursor.lastrowid
@@ -117,13 +191,17 @@ class EmployeeDB:
         # İsmi büyük harfe çevir
         name = name.strip().upper()
         
+        # Haftalık ücreti saatlik ücrete çevir (50 saate böl)
+        hourly_rate = weekly_salary / 50
+        
         cursor.execute('''
-        UPDATE employees
+        UPDATE employees 
         SET name = ?, weekly_salary = ?, daily_food = ?, daily_transport = ?
         WHERE id = ?
-        ''', (name, weekly_salary, daily_food, daily_transport, employee_id))
+        ''', (name, hourly_rate, daily_food, daily_transport, employee_id))
         
         self.conn.commit()
+        return True
     
     def update_employee_status(self, employee_id, is_active):
         """Çalışanın aktif/pasif durumunu günceller"""
@@ -146,18 +224,21 @@ class EmployeeDB:
             ORDER BY is_active DESC, weekly_salary DESC
         ''')
         employees = cursor.fetchall()
-        print(f"DEBUG - EmployeeDB.get_employees: {len(employees)} çalışan bulundu")
-        for emp in employees:
-            print(f"DEBUG - DB: ID: {emp[0]}, İsim: {emp[1]}, Aktif: {emp[5]}, Ücret: {emp[2]}")
         return employees
     
     def get_employee(self, employee_id):
         """ID'ye göre çalışan bilgilerini getirir"""
         cursor = self.conn.cursor()
-        cursor.execute('SELECT * FROM employees WHERE id = ?', (employee_id,))
+        cursor.execute('SELECT id, name, weekly_salary, daily_food, daily_transport, is_active FROM employees WHERE id = ?', (employee_id,))
         employee = cursor.fetchone()
         
-        return employee
+        if employee:
+            # Saatlik ücreti haftalık ücrete çevir (50 ile çarp)
+            employee_list = list(employee)
+            employee_list[2] = employee_list[2] * 50  # weekly_salary
+            return tuple(employee_list)
+        
+        return None
     
     def delete_employee(self, employee_id):
         """Çalışanı veritabanından siler"""
@@ -274,12 +355,26 @@ class EmployeeDB:
         return record
     
     def get_week_work_hours(self, employee_id, week_start_date):
-        """Bir haftalık çalışma saatlerini getirir"""
+        """Haftalık çalışma saatlerini getirir
+        
+        Args:
+            employee_id (int): Çalışan ID
+            week_start_date (str): Hafta başlangıç tarihi (YYYY-MM-DD formatında)
+            
+        Returns:
+            list: Haftalık çalışma saatleri listesi
+        """
         cursor = self.conn.cursor()
         
-        # Haftanın başlangıç ve bitiş tarihlerini hesapla
+        # String formatındaki tarihi datetime nesnesine çevir
         week_start = datetime.strptime(week_start_date, "%Y-%m-%d")
+        
+        # Haftanın son günü (6 gün sonrası - Pazartesiden Pazara)
         week_end = week_start + timedelta(days=6)
+        
+        # Tarih formatlarını string olarak al
+        week_start_str = week_start.strftime("%Y-%m-%d")
+        week_end_str = week_end.strftime("%Y-%m-%d")
         
         # Önce day_active sütununu kontrol et
         try:
@@ -295,7 +390,7 @@ class EmployeeDB:
         FROM work_hours
         WHERE employee_id = ? AND date BETWEEN ? AND ?
         ORDER BY date
-        ''', (employee_id, week_start.strftime("%Y-%m-%d"), week_end.strftime("%Y-%m-%d")))
+        ''', (employee_id, week_start_str, week_end_str))
         
         rows = cursor.fetchall()
         records = []
@@ -341,7 +436,6 @@ class EmployeeDB:
             self.conn.commit()
             return True
         except Exception as e:
-            print(f"Çalışan durumu güncellenirken hata: {e}")
             return False
 
     def has_work_hours(self, employee_id, date):
@@ -422,7 +516,15 @@ class EmployeeDB:
         return cursor.lastrowid
 
     def get_weekly_payments(self, employee_id, week_start_date):
-        """Haftalık ek ödemeleri/kesintileri getirir"""
+        """Haftalık ek ödemeleri/kesintileri getirir
+        
+        Args:
+            employee_id (int): Çalışan ID
+            week_start_date (str): Hafta başlangıç tarihi (YYYY-MM-DD formatında)
+            
+        Returns:
+            list: Ek ödemeler/kesintiler listesi
+        """
         cursor = self.conn.cursor()
         
         # Belirli haftaya ait ek ödemeler/kesintiler
@@ -438,9 +540,8 @@ class EmployeeDB:
         cursor.execute('''
         SELECT id, payment_type, amount, description, is_permanent
         FROM payments
-        WHERE employee_id = ? AND is_permanent = 1 AND 
-        (week_start_date = ? OR week_start_date <= ?)
-        ''', (employee_id, week_start_date, week_start_date))
+        WHERE employee_id = ? AND is_permanent = 1
+        ''', (employee_id,))
         
         permanent_payments = cursor.fetchall()
         
@@ -499,3 +600,156 @@ class EmployeeDB:
         ''', (payment_id,))
         
         return cursor.fetchone()
+    
+    def save_weekly_summary(self, week_start_date, total_amount, employee_data):
+        """Haftalık özeti veritabanına kaydeder
+        
+        Args:
+            week_start_date (str): Hafta başlangıç tarihi (YYYY-MM-DD formatında)
+            total_amount (float): Toplam ödenecek tutar
+            employee_data (list): Çalışan verileri listesi
+            
+        Returns:
+            int: Eklenen kaydın ID'si, hata durumunda None
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Önce bu hafta için kayıt var mı kontrol et
+            cursor.execute(
+                "SELECT id FROM weekly_summaries WHERE week_start_date = ?", 
+                (week_start_date,)
+            )
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Varsa güncelle
+                summary_id = existing[0]
+                cursor.execute(
+                    "UPDATE weekly_summaries SET total_amount = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (total_amount, summary_id)
+                )
+                
+                # Detayları sil
+                cursor.execute("DELETE FROM weekly_summary_details WHERE summary_id = ?", (summary_id,))
+            else:
+                # Yoksa yeni kayıt ekle
+                cursor.execute(
+                    "INSERT INTO weekly_summaries (week_start_date, total_amount) VALUES (?, ?)",
+                    (week_start_date, total_amount)
+                )
+                summary_id = cursor.lastrowid
+            
+            # Çalışan detaylarını ekle
+            for employee in employee_data:
+                cursor.execute('''
+                INSERT INTO weekly_summary_details (
+                    summary_id, employee_id, name, total_hours, weekly_salary,
+                    food_allowance, transport_allowance, total_additions,
+                    total_deductions, total_weekly_salary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    summary_id,
+                    employee['id'],
+                    employee['name'],
+                    employee['total_hours'],
+                    employee['weekly_salary'],
+                    employee['food_allowance'],
+                    employee['transport_allowance'],
+                    employee['total_additions'],
+                    employee['total_deductions'],
+                    employee['total_weekly_salary']
+                ))
+            
+            self.conn.commit()
+            return summary_id
+        
+        except Exception as e:
+            self.conn.rollback()
+            return None
+    
+    def get_weekly_summary(self, week_start_date):
+        """Belirli bir hafta için özet bilgilerini getirir
+        
+        Args:
+            week_start_date (str): Hafta başlangıç tarihi (YYYY-MM-DD formatında)
+            
+        Returns:
+            dict: Haftalık özet bilgileri ve detayları, bulunamazsa None
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Haftalık özeti al
+            cursor.execute(
+                "SELECT id, total_amount FROM weekly_summaries WHERE week_start_date = ?", 
+                (week_start_date,)
+            )
+            summary = cursor.fetchone()
+            
+            if not summary:
+                return None
+            
+            summary_id, total_amount = summary
+            
+            # Detayları al
+            cursor.execute('''
+            SELECT employee_id, name, total_hours, weekly_salary, food_allowance,
+                   transport_allowance, total_additions, total_deductions, total_weekly_salary
+            FROM weekly_summary_details
+            WHERE summary_id = ?
+            ORDER BY total_weekly_salary DESC
+            ''', (summary_id,))
+            
+            details = []
+            for row in cursor.fetchall():
+                details.append({
+                    'id': row[0],
+                    'name': row[1],
+                    'total_hours': row[2],
+                    'weekly_salary': row[3],
+                    'food_allowance': row[4],
+                    'transport_allowance': row[5],
+                    'total_additions': row[6],
+                    'total_deductions': row[7],
+                    'total_weekly_salary': row[8]
+                })
+            
+            return {
+                'id': summary_id,
+                'week_start_date': week_start_date,
+                'total_amount': total_amount,
+                'details': details
+            }
+        
+        except Exception as e:
+            return None
+    
+    def get_available_weekly_summaries(self):
+        """Kaydedilmiş tüm haftalık özetleri getirir
+        
+        Returns:
+            list: Haftalık özet listesi
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            cursor.execute('''
+            SELECT id, week_start_date, total_amount, created_at
+            FROM weekly_summaries
+            ORDER BY week_start_date DESC
+            ''')
+            
+            summaries = []
+            for row in cursor.fetchall():
+                summaries.append({
+                    'id': row[0],
+                    'week_start_date': row[1],
+                    'total_amount': row[2],
+                    'created_at': row[3]
+                })
+            
+            return summaries
+        
+        except Exception as e:
+            return []
