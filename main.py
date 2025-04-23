@@ -4,7 +4,7 @@ import warnings
 # PyQt5 uyarılarını gizle
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QHBoxLayout, QLabel
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
@@ -12,6 +12,8 @@ from models.database import EmployeeDB
 from views.employee_form import EmployeeForm
 from views.time_select_form import TimeSelectForm
 from views.weekly_summary_form import WeeklySummaryForm
+from views.calisanlar import Calisanlar
+from views.calisanlist import CalisanList
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
@@ -69,10 +71,37 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Çalışan formu
-        self.employee_form = EmployeeForm(db=self.db)
-        self.tabs.addTab(self.employee_form, "ÇALIŞANLAR")
+        # Kişiler sekmesi (calisanlar.py)
+        self.calisanlar_widget = Calisanlar(db=self.db)
+        self.tabs.insertTab(0, self.calisanlar_widget, "KİŞİLER")
         
+        # KAYITLAR sekmesi (Kişiler'den hemen sonra)
+        kayitlar_tab = QWidget()
+        kayitlar_layout = QHBoxLayout(kayitlar_tab)
+        kayitlar_layout.setContentsMargins(0, 0, 0, 0)
+        kayitlar_layout.setSpacing(0)
+
+        self.calisanlist_widget = CalisanList(db=self.db)
+        kayitlar_layout.addWidget(self.calisanlist_widget, 1)
+
+        from PyQt5.QtWidgets import QLabel
+        orta_placeholder = QLabel("Orta Alan (Kayıtlar)")
+        orta_placeholder.setStyleSheet("background:#f5f5f5; color:#888; font-size:16px; text-align:center;")
+        orta_placeholder.setAlignment(Qt.AlignCenter)
+        kayitlar_layout.addWidget(orta_placeholder, 3)
+
+        sag_placeholder = QLabel("Sağ Alan (Özet veya Detay)")
+        sag_placeholder.setStyleSheet("background:#fafafa; color:#aaa; font-size:16px; text-align:center;")
+        sag_placeholder.setAlignment(Qt.AlignCenter)
+        kayitlar_layout.addWidget(sag_placeholder, 2)
+
+        self.tabs.insertTab(1, kayitlar_tab, "KAYITLAR")
+
+        # --- Calisanlar sekmesindeki değişiklikler CalisanList'e yansısın ---
+        self.calisanlar_widget.employee_updated.connect(self.calisanlist_widget.load_employees)
+        self.calisanlar_widget.employee_added.connect(self.calisanlist_widget.load_employees)
+        self.calisanlar_widget.employee_deleted.connect(self.calisanlist_widget.load_employees)
+
         # Süre seçim formu
         self.time_select_form = TimeSelectForm(db=self.db)
         self.tabs.addTab(self.time_select_form, "SÜRE")
@@ -84,14 +113,6 @@ class MainWindow(QMainWindow):
         # Zaman takibi formundan gelen sinyali haftalık özet formuna bağla
         # Bu sayede zaman değiştiğinde haftalık özet otomatik olarak güncellenecek
         self.time_select_form.time_tracking_form.time_changed_signal.connect(self.weekly_summary_form.load_active_employees)
-        
-        # Çalışan durumu değiştiğinde diğer formları güncelle
-        self.employee_form.employee_updated.connect(self.time_select_form.load_employees)
-        self.employee_form.employee_updated.connect(self.weekly_summary_form.load_active_employees)
-        self.employee_form.employee_added.connect(self.time_select_form.load_employees)
-        self.employee_form.employee_added.connect(self.weekly_summary_form.load_active_employees)
-        self.employee_form.employee_deleted.connect(self.time_select_form.load_employees)
-        self.employee_form.employee_deleted.connect(self.weekly_summary_form.load_active_employees)
         
         main_layout.addWidget(self.tabs)
         

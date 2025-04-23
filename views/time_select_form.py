@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 from datetime import datetime
 
-from views.time_tracking_form import TimeTrackingForm
+from views.time_tracking_form import ZamanTakipForm
 from utils.helpers import format_currency
 
 class PaymentDialog(QDialog):
@@ -197,7 +197,7 @@ class TimeSelectForm(QWidget):
         self.db = db
         self.current_time_form = None
         self.employees = []
-        self.time_tracking_form = None  # Zaman takibi formuna erişim için özellik
+        self.zamantakip = None  # Zaman takibi formuna erişim için özellik
         
         self.initUI()
         self.load_employees()
@@ -298,8 +298,8 @@ class TimeSelectForm(QWidget):
             self.current_time_form.deleteLater()
         
         # Yeni zaman takip formunu oluştur
-        self.current_time_form = TimeTrackingForm(self.db, employee_id)
-        self.time_tracking_form = self.current_time_form  # Zaman takibi formunu ana pencereden erişilebilir yap
+        self.current_time_form = ZamanTakipForm(self.db, employee_id)
+        self.zamantakip = self.current_time_form  # Zaman takibi formunu ana pencereden erişilebilir yap
         self.current_time_form.set_employee(employee_id, employee_name)
         
         # Çalışanın aktif olup olmadığını kontrol et

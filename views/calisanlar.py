@@ -99,16 +99,22 @@ class Calisanlar(QWidget):
         self.employee_list.setColumnCount(4)
         self.employee_list.setHorizontalHeaderLabels(["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"])
         self.employee_list.horizontalHeader().setStyleSheet("QHeaderView::section { background-color: #2a5885; color: white; font-weight: bold; font-size: 14px; padding: 6px 0; border: none; }")
+        self.employee_list.setStyleSheet(
+            "QTableWidget { font-size: 14px; } "
+            "QTableWidget::item { font-size: 14px; height: 34px; } "
+            "QTableWidget::item:selected { background: #DCE6F1; }"
+        )
         self.employee_list.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.employee_list.verticalHeader().setVisible(False)
         self.employee_list.setEditTriggers(QTableWidget.NoEditTriggers)
         self.employee_list.setSelectionBehavior(QTableWidget.SelectRows)
         self.employee_list.setSelectionMode(QTableWidget.SingleSelection)
         self.employee_list.setAlternatingRowColors(True)
-        self.employee_list.setStyleSheet("QTableWidget { font-size: 13px; } QTableWidget::item:selected { background: #DCE6F1; }")
         self.employee_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.employee_list)
         self.employee_list.doubleClicked.connect(self.edit_employee)
+        # Satır yüksekliğini sabitle
+        self.employee_list.verticalHeader().setDefaultSectionSize(34)
         self.employee_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.employee_list.customContextMenuRequested.connect(self.show_context_menu)
         self.load_employees()
