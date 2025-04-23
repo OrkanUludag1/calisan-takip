@@ -129,24 +129,30 @@ class Calisanlar(QWidget):
             name_item = QTableWidgetItem(name)
             name_item.setData(Qt.UserRole, employee_id)
             name_item.setData(Qt.UserRole + 1, is_active)
-            weekly_salary_value = weekly_salary * 50
-            salary_item = QTableWidgetItem(self.format_currency(weekly_salary_value))
-            food_item = QTableWidgetItem(self.format_currency(daily_food))
-            transport_item = QTableWidgetItem(self.format_currency(daily_transport))
+            name_item.setTextAlignment(Qt.AlignCenter)
+            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+            if not is_active:
+                font = name_item.font()
+                font.setItalic(True)
+                name_item.setFont(font)
+                name_item.setForeground(QBrush(QColor("#b0b0b0")))
+                # Sadece isim göster, diğer hücreleri boş ve disable yap
+                for col in range(1, 4):
+                    empty_item = QTableWidgetItem("")
+                    empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsEnabled)
+                    self.employee_list.setItem(row, col, empty_item)
+            else:
+                # Aktif çalışanlar için tüm verileri göster
+                salary_item = QTableWidgetItem(format_currency(weekly_salary * 50))
+                food_item = QTableWidgetItem(format_currency(daily_food))
+                transport_item = QTableWidgetItem(format_currency(daily_transport))
+                for item in [salary_item, food_item, transport_item]:
+                    item.setTextAlignment(Qt.AlignCenter)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.employee_list.setItem(row, 1, salary_item)
+                self.employee_list.setItem(row, 2, food_item)
+                self.employee_list.setItem(row, 3, transport_item)
             self.employee_list.setItem(row, 0, name_item)
-            self.employee_list.setItem(row, 1, salary_item)
-            self.employee_list.setItem(row, 2, food_item)
-            self.employee_list.setItem(row, 3, transport_item)
-            items = [name_item, salary_item, food_item, transport_item]
-            for item in items:
-                item.setTextAlignment(Qt.AlignCenter)
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                if not is_active:
-                    font = item.font()
-                    font.setItalic(True)
-                    font.setStrikeOut(True)
-                    item.setFont(font)
-                    item.setForeground(QBrush(QColor("#FF6B6B")))
         self.employee_list.resizeRowsToContents()
 
     def format_currency(self, value):
@@ -157,7 +163,7 @@ class Calisanlar(QWidget):
         """Çalışan bilgilerini düzenler"""
         if item and item.row() == 0:  # Başlık satırı
             return
-        if item and not employee_id:
+        if not employee_id and item:
             row = item.row()
             employee_id = self.employee_list.item(row, 0).data(Qt.UserRole)
         if employee_id:
@@ -227,12 +233,12 @@ class Calisanlar(QWidget):
         menu = QMenu(self)
         add_action = menu.addAction("Çalışan Ekle")
         add_action.triggered.connect(self.add_employee)
-        if item:
+        if item and item.row() > -1:  # Sadece gerçek çalışan satırlarında
             row = item.row()
             employee_id = self.employee_list.item(row, 0).data(Qt.UserRole)
             is_active = self.employee_list.item(row, 0).data(Qt.UserRole + 1)
             edit_action = menu.addAction("Düzenle")
-            edit_action.triggered.connect(lambda: self.edit_employee(item))
+            edit_action.triggered.connect(lambda: self.edit_employee(employee_id=employee_id))
             if is_active:
                 toggle_action = menu.addAction("Pasif Yap")
                 toggle_action.triggered.connect(lambda: self.toggle_employee_active(employee_id, False))

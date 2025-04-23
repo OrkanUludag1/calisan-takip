@@ -4,7 +4,7 @@ import warnings
 # PyQt5 uyarılarını gizle
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QHBoxLayout, QLabel
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QHBoxLayout, QLabel, QComboBox
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
@@ -14,6 +14,7 @@ from views.time_select_form import TimeSelectForm
 from views.weekly_summary_form import WeeklySummaryForm
 from views.calisanlar import Calisanlar
 from views.calisanlist import CalisanList
+from views.zamantakip import ZamanTakipForm
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
@@ -82,13 +83,32 @@ class MainWindow(QMainWindow):
         kayitlar_layout.setSpacing(0)
 
         self.calisanlist_widget = CalisanList(db=self.db)
-        kayitlar_layout.addWidget(self.calisanlist_widget, 1)
 
-        from PyQt5.QtWidgets import QLabel
-        orta_placeholder = QLabel("Orta Alan (Kayıtlar)")
-        orta_placeholder.setStyleSheet("background:#f5f5f5; color:#888; font-size:16px; text-align:center;")
-        orta_placeholder.setAlignment(Qt.AlignCenter)
-        kayitlar_layout.addWidget(orta_placeholder, 3)
+        # Orta alan üstüne çalışan adı için QLabel
+        self.selected_employee_label = QLabel()
+        self.selected_employee_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #2a5885; padding: 8px 0 16px 0;")
+        self.selected_employee_label.setAlignment(Qt.AlignCenter)
+        self.selected_employee_label.setText("")
+
+        # Orta layout için dikey bir layout oluştur
+        self.orta_layout = QVBoxLayout()
+        self.orta_layout.setContentsMargins(0, 0, 0, 0)
+        self.orta_layout.setSpacing(0)
+        self.orta_layout.addWidget(self.selected_employee_label)
+        # Haftalar için ComboBox ekle
+        self.week_combo = QComboBox()
+        self.week_combo.setStyleSheet("font-size: 18px; padding: 6px 10px;")
+        self.orta_layout.addWidget(self.week_combo)
+        from views.zaman import ZamanTakipForm
+        self.zaman_takip_form = ZamanTakipForm(self.db)
+        self.orta_layout.addWidget(self.zaman_takip_form)
+        self.populate_weeks()
+
+        # QWidget ile orta alanı sarmala
+        self.orta_widget = QWidget()
+        self.orta_widget.setLayout(self.orta_layout)
+        kayitlar_layout.addWidget(self.calisanlist_widget, 1)
+        kayitlar_layout.addWidget(self.orta_widget, 3)
 
         sag_placeholder = QLabel("Sağ Alan (Özet veya Detay)")
         sag_placeholder.setStyleSheet("background:#fafafa; color:#aaa; font-size:16px; text-align:center;")
@@ -102,18 +122,11 @@ class MainWindow(QMainWindow):
         self.calisanlar_widget.employee_added.connect(self.calisanlist_widget.load_employees)
         self.calisanlar_widget.employee_deleted.connect(self.calisanlist_widget.load_employees)
 
-        # Süre seçim formu
-        self.time_select_form = TimeSelectForm(db=self.db)
-        self.tabs.addTab(self.time_select_form, "SÜRE")
-        
-        # Haftalık özet formu
-        self.weekly_summary_form = WeeklySummaryForm(db=self.db)
-        self.tabs.addTab(self.weekly_summary_form, "HAFTALIK")
-        
-        # Zaman takibi formundan gelen sinyali haftalık özet formuna bağla
-        # Bu sayede zaman değiştiğinde haftalık özet otomatik olarak güncellenecek
-        self.time_select_form.time_tracking_form.time_changed_signal.connect(self.weekly_summary_form.load_active_employees)
-        
+        # Çalışan seçilince label ve zaman takip güncellensin
+        self.calisanlist_widget.employee_selected.connect(self.update_selected_employee)
+        # İlk çalışanı seçili göster
+        self.init_selected_employee()
+
         main_layout.addWidget(self.tabs)
         
         # Genel stil
@@ -182,6 +195,54 @@ class MainWindow(QMainWindow):
                 border: 1px solid #3498db;
             }
         """)
+
+    def init_selected_employee(self):
+        # İlk çalışanı otomatik seç ve label+formu ayarla
+        if self.calisanlist_widget.rowCount() > 0:
+            item = self.calisanlist_widget.item(0, 0)
+            if item:
+                employee_id = item.data(Qt.UserRole)
+                employee_name = item.text()
+                self.update_selected_employee(employee_id, employee_name)
+
+    def update_selected_employee(self, employee_id, employee_name):
+        self.selected_employee_label.setText(employee_name)
+        # self.zaman_takip_form.set_employee(employee_id, employee_name)
+
+    def populate_weeks(self):
+        from datetime import datetime, timedelta
+        import locale
+        try:
+            locale.setlocale(locale.LC_TIME, 'tr_TR.UTF-8')
+        except:
+            pass
+        # Veritabanından çalışılmış haftaları bul
+        cursor = self.db.conn.cursor()
+        cursor.execute("SELECT DISTINCT date FROM work_hours ORDER BY date")
+        dates = [row[0] for row in cursor.fetchall()]
+        week_starts = set()
+        for d in dates:
+            dt = datetime.strptime(d, "%Y-%m-%d")
+            monday = dt - timedelta(days=dt.weekday())
+            week_starts.add(monday.date())
+        week_starts = sorted(list(week_starts))
+        self.week_combo.clear()
+        for ws in week_starts:
+            week_end = ws + timedelta(days=6)
+            # Türkçe tarih aralığı formatı
+            start_str = ws.strftime("%d %B")
+            end_str = week_end.strftime("%d %B %Y")
+            label = f"{start_str} - {end_str}"
+            self.week_combo.addItem(label, ws.strftime("%Y-%m-%d"))
+        # Eğer hiç veri yoksa bugünkü haftayı ekle
+        if not week_starts:
+            today = datetime.now().date()
+            monday = today - timedelta(days=today.weekday())
+            week_end = monday + timedelta(days=6)
+            start_str = monday.strftime("%d %B")
+            end_str = week_end.strftime("%d %B %Y")
+            label = f"{start_str} - {end_str}"
+            self.week_combo.addItem(label, monday.strftime("%Y-%m-%d"))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

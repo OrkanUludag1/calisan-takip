@@ -10,8 +10,9 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 from datetime import datetime
 
-from views.time_tracking_form import ZamanTakipForm
+from views.zamantakip import ZamanTakipForm
 from utils.helpers import format_currency
+from views.ozet import OzetForm
 
 class PaymentDialog(QDialog):
     """Ödeme/kesinti eklemek için dialog penceresi"""
@@ -204,64 +205,63 @@ class TimeSelectForm(QWidget):
     
     def initUI(self):
         """Kullanıcı arayüzünü başlatır"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(15)
-        
-        # Ana içerik için splitter (zaman takip formu ve çalışan listesi ayarlanabilir genişlikte olacak)
-        content_splitter = QSplitter(Qt.Horizontal)
-        content_splitter.setHandleWidth(0)  # Ayırıcı çizgiyi kaldır
-        content_splitter.setChildrenCollapsible(False)  # Bölümlerin tamamen kapanmasını engelle
-        content_splitter.setStyleSheet("""
-            QSplitter::handle {
-                background-color: transparent;
-            }
-        """)
-        
-        # Form konteyneri
-        form_container = QWidget()
-        self.time_form_container = QVBoxLayout(form_container)
-        self.time_form_container.setContentsMargins(0, 0, 0, 0)
-        
-        # Çalışan listesi
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Sol: Çalışan listesi ve zaman takip formu
+        self.splitter = QSplitter(Qt.Horizontal)
         self.employee_list = QListWidget()
-        self.employee_list.setMaximumWidth(200)  # Listenin maksimum genişliği
-        self.employee_list.setStyleSheet("""
-            QListWidget {
-                border: none;  /* Çerçeveyi kaldır */
-                padding: 5px;
-                margin-top: 32px;  /* TimeTrackingForm'daki tablolarla aynı hizaya getirmek için üstten margin */
-                background-color: #f8f9fa;
-                font-size: 14px;
-            }
-            QListWidget::item {
-                padding: 10px;
-                border-bottom: 1px solid #eee;
-            }
-            QListWidget::item:selected {
-                background-color: #3498db;
-                color: white;
-            }
-            QListWidget::item:hover:!selected {
-                background-color: #e8f0fe;
-            }
-        """)
-        
-        # Bir çalışan seçildiğinde
+        self.employee_list.setMinimumWidth(180)
+        self.employee_list.setStyleSheet("font-size: 15px;")
         self.employee_list.currentItemChanged.connect(self.on_employee_selected)
-        
-        # Sağ tık menüsü için context menu ayarla
-        self.employee_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.employee_list.customContextMenuRequested.connect(self.show_employee_context_menu)
-        
-        # Splitter'a ekle (önce liste, sonra form)
-        content_splitter.addWidget(self.employee_list)
-        content_splitter.addWidget(form_container)
-        
-        # Genişlik oranlarını ayarla (liste 1:5 form olacak şekilde)
-        content_splitter.setSizes([160, 800])
-        
-        main_layout.addWidget(content_splitter)
-    
+        self.splitter.addWidget(self.employee_list)
+
+        # Orta: ZamanTakipForm
+        self.current_time_form = None
+        self.time_form_container = QWidget()
+        self.time_form_layout = QVBoxLayout(self.time_form_container)
+        self.time_form_layout.setContentsMargins(0, 0, 0, 0)
+        self.splitter.addWidget(self.time_form_container)
+
+        # Sağ: OzetForm (çalışan özeti)
+        self.ozet_container = QWidget()
+        self.ozet_layout = QVBoxLayout(self.ozet_container)
+        self.ozet_layout.setContentsMargins(0, 0, 0, 0)
+        self.ozet_widget = None
+        self.splitter.addWidget(self.ozet_container)
+        self.splitter.setSizes([200, 600, 300])
+
+        main_layout.addWidget(self.splitter)
+        self.setLayout(main_layout)
+        self.load_employees()
+
+    def on_employee_selected(self, current, previous):
+        if not current:
+            return
+        employee_name = current.text()
+        employee_id = current.data(Qt.UserRole)
+        self.load_employee(employee_id, employee_name)
+
+    def load_employee(self, employee_id, employee_name):
+        # Orta alanı güncelle
+        if self.current_time_form:
+            self.time_form_layout.removeWidget(self.current_time_form)
+            self.current_time_form.deleteLater()
+            self.current_time_form = None
+        self.current_time_form = ZamanTakipForm(self.db, employee_id=employee_id)
+        self.time_form_layout.addWidget(self.current_time_form)
+
+        # Sağdaki özet alanını güncelle
+        if self.ozet_widget:
+            self.ozet_layout.removeWidget(self.ozet_widget)
+            self.ozet_widget.deleteLater()
+            self.ozet_widget = None
+        # Haftalık özet verisini hazırla
+        summary_data = self.get_employee_weekly_summary(employee_id)
+        self.ozet_widget = OzetForm(employee_name, summary_data)
+        self.ozet_layout.addWidget(self.ozet_widget)
+
     def load_employees(self):
         """Çalışanları yükler ve listeye ekler"""
         self.employee_list.clear()
@@ -280,34 +280,19 @@ class TimeSelectForm(QWidget):
         if self.employees and len(self.employees) > 0:
             self.employee_list.setCurrentRow(0)  # Bu otomatik olarak on_employee_selected'ı tetikleyecek
         
-    def on_employee_selected(self, current, previous):
-        """Listeden bir çalışan seçildiğinde"""
-        if not current:
-            return
-            
-        employee_id = current.data(Qt.UserRole)
-        name = current.text()
-        
-        self.load_employee(employee_id, name)
-    
-    def load_employee(self, employee_id, employee_name):
-        """Belirli bir çalışanı yükler"""
-        # Mevcut formu temizle
-        if self.current_time_form:
-            self.time_form_container.removeWidget(self.current_time_form)
-            self.current_time_form.deleteLater()
-        
-        # Yeni zaman takip formunu oluştur
-        self.current_time_form = ZamanTakipForm(self.db, employee_id)
-        self.zamantakip = self.current_time_form  # Zaman takibi formunu ana pencereden erişilebilir yap
-        self.current_time_form.set_employee(employee_id, employee_name)
-        
-        # Çalışanın aktif olup olmadığını kontrol et
-        is_active = self.current_time_form.check_employee_active()
-        
-        # Container'a ekle
-        self.time_form_container.addWidget(self.current_time_form)
-    
+    def get_employee_weekly_summary(self, employee_id):
+        # Burada veritabanından veya mevcut formlardan ilgili çalışanın haftalık özet verisi çekilmeli
+        # Şimdilik örnek veri ile dolduruluyor
+        return {
+            "total_hours": 45,
+            "weekly_salary": 8000,
+            "meal_allowance": 500,
+            "transport_allowance": 400,
+            "total_additions": 250,
+            "total_deductions": 100,
+            "total_weekly_salary": 9050
+        }
+
     def show_employee_context_menu(self, position):
         """Çalışan listesinde sağ tık menüsünü gösterir"""
         # Tıklanan öğeyi al
@@ -347,6 +332,9 @@ class TimeSelectForm(QWidget):
         # Sabit ek ödeme menü öğesi
         add_permanent_action = menu.addAction("Sabit Ek Ödeme Ekle")
         
+        # Düzenle menü öğesi
+        edit_employee_action = menu.addAction("Düzenle")
+        
         # Ayırıcı çizgi
         menu.addSeparator()
         
@@ -365,7 +353,12 @@ class TimeSelectForm(QWidget):
             self.add_payment(employee_id, "bonus", "Sabit Ek Ödeme", "Açıklama:", True)
         elif action == list_payments_action:
             self.list_payments(employee_id)
-            
+        elif action == edit_employee_action:
+            from views.employee_form import EmployeeDialog
+            dialog = EmployeeDialog(self, employee=employee)
+            if dialog.exec_() == dialog.Accepted:
+                self.load_employees()
+
     def add_payment(self, employee_id, payment_type, title, description_label, is_permanent):
         """Ödeme/kesinti eklemek için dialog gösterir"""
         # Mevcut haftanın başlangıç tarihini al
@@ -424,3 +417,8 @@ class TimeSelectForm(QWidget):
             # Formu güncelle
             if self.current_time_form:
                 self.current_time_form.calculate_total_hours()
+
+    @property
+    def time_tracking_form(self):
+        # Geriye mevcut zaman takip formunu döndürür
+        return self.current_time_form

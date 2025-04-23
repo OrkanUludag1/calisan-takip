@@ -311,4 +311,20 @@ class ZamanTakipForm(QWidget):
                     elif col == 4:
                         time_edit.setTime(QTime(18, 45))
                     self.days_table.setCellWidget(i, col, time_edit)
+    def set_employee(self, employee_id, employee_name=None):
+        # Çalışan değiştirildiğinde tabloyu ve verileri güncelle
+        self.current_employee_id = employee_id
+        self.setWindowTitle(f"Zaman Takibi - {employee_name}" if employee_name else "Zaman Takibi")
+        self.load_week_days()
+        # Eğer başka çalışan verisi yükleniyorsa burada eklenebilir
+    def check_employee_active(self):
+        # Seçili çalışanın aktif olup olmadığını kontrol et
+        if not self.current_employee_id:
+            return False
+        employee = self.db.get_employee(self.current_employee_id)
+        if employee and (isinstance(employee, dict) and 'is_active' in employee):
+            return bool(employee['is_active'])
+        elif employee and isinstance(employee, (list, tuple)) and len(employee) >= 6:
+            return bool(employee[5])
+        return False
     # ... (DEVAMI mevcut koddan kopyalandı)
