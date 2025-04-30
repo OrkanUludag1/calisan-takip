@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QApplication, QMenu, QMessageBox
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt
 import sys
 import os
 
@@ -8,7 +8,6 @@ from models.database import EmployeeDB
 
 class CalisanList(QTableWidget):
     """Çalışanları tablo şeklinde gösteren, sadece isim sütunu ve başlık satırı boş (tam genişlik) widget"""
-    employee_selected = pyqtSignal(int, str)
     def __init__(self, db, parent=None):
         super().__init__(parent)
         self.db = db
@@ -17,7 +16,7 @@ class CalisanList(QTableWidget):
         self.verticalHeader().setVisible(False)
         self.horizontalHeader().setVisible(True)
         self.horizontalHeader().setStyleSheet(
-            "QHeaderView::section { background-color: #2a5885; color: white; font-weight: bold; font-size: 14px; padding: 6px 0; border: none; }"
+            "QHeaderView::section { background-color: #153866; color: white; font-weight: bold; font-size: 14px; padding: 6px 0; border: none; }"
         )
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(self.SelectRows)
@@ -32,7 +31,6 @@ class CalisanList(QTableWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
         self.load_employees()
-        self.cellClicked.connect(self.on_employee_selected)
 
     def load_employees(self):
         self.setRowCount(0)
@@ -50,13 +48,6 @@ class CalisanList(QTableWidget):
         self.horizontalHeader().setSectionResizeMode(0, self.horizontalHeader().Stretch)
         if self.rowCount() > 0:
             self.selectRow(0)
-
-    def on_employee_selected(self, row, col):
-        item = self.item(row, 0)
-        if item:
-            employee_id = item.data(Qt.UserRole)
-            employee_name = item.text()
-            self.employee_selected.emit(employee_id, employee_name)
 
     def show_context_menu(self, position):
         item = self.itemAt(position)
@@ -80,12 +71,3 @@ class CalisanList(QTableWidget):
             QMessageBox.information(self, "Bilgi", f"Sabit ek ödeme ekle > {employee_name} (id: {employee_id})")
         elif action == list_payments_action:
             QMessageBox.information(self, "Bilgi", f"Ödemeleri listele ve yönet > {employee_name} (id: {employee_id})")
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    db = EmployeeDB()
-    w = CalisanList(db)
-    w.setWindowTitle("Çalışan Listesi")
-    w.resize(220, 400)
-    w.show()
-    sys.exit(app.exec_())

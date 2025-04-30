@@ -13,63 +13,7 @@ from PyQt5.QtGui import QColor, QBrush, QFont
 
 from models.database import EmployeeDB
 from utils.helpers import format_currency
-
-class EmployeeDialog(QDialog):
-    """Çalışan bilgilerini düzenlemek için dialog penceresi"""
-    def __init__(self, parent=None, employee=None):
-        super().__init__(parent)
-        self.employee = employee
-        self.initUI()
-    def initUI(self):
-        self.setWindowTitle("Çalışan Bilgileri")
-        self.setModal(True)
-        layout = QVBoxLayout(self)
-        form_layout = QFormLayout()
-        self.name_input = QLineEdit()
-        self.weekly_salary_input = QLineEdit()
-        self.daily_food_input = QLineEdit()
-        self.daily_transport_input = QLineEdit()
-        form_layout.addRow("İsim:", self.name_input)
-        form_layout.addRow("Haftalık Ücret:", self.weekly_salary_input)
-        form_layout.addRow("Günlük Yemek:", self.daily_food_input)
-        form_layout.addRow("Günlük Yol:", self.daily_transport_input)
-        if self.employee:
-            self.name_input.setText(self.employee[1])
-            self.weekly_salary_input.setText(str(self.employee[2]))
-            self.daily_food_input.setText(str(self.employee[3]))
-            self.daily_transport_input.setText(str(self.employee[4]))
-        button_layout = QHBoxLayout()
-        save_btn = QPushButton("Kaydet")
-        cancel_btn = QPushButton("İptal")
-        save_btn.clicked.connect(self.accept)
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(save_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(form_layout)
-        layout.addLayout(button_layout)
-        self.setFixedWidth(300)
-    def get_values(self):
-        name = self.name_input.text().strip()
-        if not name:
-            return None
-        try:
-            weekly_salary = float(self.weekly_salary_input.text()) if self.weekly_salary_input.text().strip() else 0
-        except ValueError:
-            weekly_salary = 0
-        try:
-            daily_food = float(self.daily_food_input.text()) if self.daily_food_input.text().strip() else 0
-        except ValueError:
-            daily_food = 0
-        try:
-            daily_transport = float(self.daily_transport_input.text()) if self.daily_transport_input.text().strip() else 0
-        except ValueError:
-            daily_transport = 0
-        return {
-            'name': name,
-            'weekly_salary': weekly_salary,
-            'daily_food': daily_food,
-            'daily_transport': daily_transport
-        }
+from views.employee_form import EmployeeDialog
 
 class Calisanlar(QWidget):
     """Çalışan formu"""
@@ -86,7 +30,15 @@ class Calisanlar(QWidget):
         else:
             self.db = db
         self.current_employee_id = None
+        self._active_dialogs = []  # Açık dialog referanslarını tutmak için
         self.initUI()
+        # --- Otomatik güncelleme: DB değişince tabloyu güncelle ---
+        if hasattr(self.db, 'data_changed'):
+            try:
+                self.db.data_changed.disconnect(self.load_employees)
+            except Exception:
+                pass
+            self.db.data_changed.connect(self.load_employees)
     
     def initUI(self):
         """Kullanıcı arayüzünü başlatır"""
@@ -98,7 +50,7 @@ class Calisanlar(QWidget):
         self.employee_list = QTableWidget()
         self.employee_list.setColumnCount(4)
         self.employee_list.setHorizontalHeaderLabels(["İsim", "Haftalık Ücret", "Günlük Yemek", "Günlük Yol"])
-        self.employee_list.horizontalHeader().setStyleSheet("QHeaderView::section { background-color: #2a5885; color: white; font-weight: bold; font-size: 14px; padding: 6px 0; border: none; }")
+        self.employee_list.horizontalHeader().setStyleSheet("QHeaderView::section { background-color: #153866; color: white; font-weight: bold; }")
         self.employee_list.setStyleSheet(
             "QTableWidget { font-size: 14px; } "
             "QTableWidget::item { font-size: 14px; height: 34px; } "
@@ -112,7 +64,7 @@ class Calisanlar(QWidget):
         self.employee_list.setAlternatingRowColors(True)
         self.employee_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.employee_list)
-        self.employee_list.doubleClicked.connect(self.edit_employee)
+        # self.employee_list.doubleClicked.connect(self.edit_employee)  # <-- Bu satırı kaldır veya yoruma al
         # Satır yüksekliğini sabitle
         self.employee_list.verticalHeader().setDefaultSectionSize(34)
         self.employee_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -120,56 +72,66 @@ class Calisanlar(QWidget):
         self.load_employees()
 
     def load_employees(self):
-        """Çalışanları tabloya yükler"""
-        self.employee_list.setRowCount(0)  # Tüm satırları temizle
-        employees = self.db.get_employees()
-        for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
-            row = self.employee_list.rowCount()
-            self.employee_list.insertRow(row)
-            name_item = QTableWidgetItem(name)
-            name_item.setData(Qt.UserRole, employee_id)
-            name_item.setData(Qt.UserRole + 1, is_active)
-            name_item.setTextAlignment(Qt.AlignCenter)
-            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-            if not is_active:
-                font = name_item.font()
-                font.setItalic(True)
-                name_item.setFont(font)
-                name_item.setForeground(QBrush(QColor("#b0b0b0")))
-                # Sadece isim göster, diğer hücreleri boş ve disable yap
-                for col in range(1, 4):
-                    empty_item = QTableWidgetItem("")
-                    empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsEnabled)
-                    self.employee_list.setItem(row, col, empty_item)
-            else:
-                # Aktif çalışanlar için tüm verileri göster
-                salary_item = QTableWidgetItem(format_currency(weekly_salary * 50))
-                food_item = QTableWidgetItem(format_currency(daily_food))
-                transport_item = QTableWidgetItem(format_currency(daily_transport))
-                for item in [salary_item, food_item, transport_item]:
-                    item.setTextAlignment(Qt.AlignCenter)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+        if getattr(self, '_is_updating', False):
+            return
+        self._is_updating = True
+        try:
+            # print("[DEBUG] load_employees çağrıldı")
+            """Çalışanları tabloya yükler"""
+            self.employee_list.setRowCount(0)  # Tüm satırları temizle
+            employees = self.db.get_employees()
+            for employee_id, name, weekly_salary, daily_food, daily_transport, is_active in employees:
+                row = self.employee_list.rowCount()
+                self.employee_list.insertRow(row)
+                name_item = QTableWidgetItem(name)
+                name_item.setData(Qt.UserRole, employee_id)
+                name_item.setData(Qt.UserRole + 1, is_active)
+                weekly_salary_value = weekly_salary * 50
+                salary_item = QTableWidgetItem(self.format_currency(weekly_salary_value))
+                food_item = QTableWidgetItem(self.format_currency(daily_food))
+                transport_item = QTableWidgetItem(self.format_currency(daily_transport))
+                self.employee_list.setItem(row, 0, name_item)
                 self.employee_list.setItem(row, 1, salary_item)
                 self.employee_list.setItem(row, 2, food_item)
                 self.employee_list.setItem(row, 3, transport_item)
-            self.employee_list.setItem(row, 0, name_item)
+                items = [name_item, salary_item, food_item, transport_item]
+                for item in items:
+                    item.setTextAlignment(Qt.AlignCenter)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    if not is_active:
+                        font = item.font()
+                        font.setItalic(True)
+                        font.setStrikeOut(True)
+                        item.setFont(font)
+                        item.setForeground(QBrush(QColor("#FF6B6B")))
+        finally:
+            self._is_updating = False
         self.employee_list.resizeRowsToContents()
 
     def format_currency(self, value):
-        """Para birimini formatlar"""
-        return f"{value:,.2f} ₺".replace(",", ".")
+        """Para birimini formatlar: Ondalık yok, binlik nokta, TL"""
+        try:
+            value = int(round(float(value)))
+            return f"{value:,}".replace(",", ".") + " TL"
+        except Exception:
+            return "0 TL"
 
     def edit_employee(self, item=None, employee_id=None):
         """Çalışan bilgilerini düzenler"""
-        if item and item.row() == 0:  # Başlık satırı
-            return
-        if not employee_id and item:
+        if item and not employee_id:
             row = item.row()
             employee_id = self.employee_list.item(row, 0).data(Qt.UserRole)
         if employee_id:
             employee = self.db.get_employee(employee_id)
             if employee:
                 dialog = EmployeeDialog(self, employee)
+                # print(f"[DEBUG] Dialog açıldı (edit_employee): {dialog}")
+                self._active_dialogs.append(dialog)
+                def cleanup():
+                    # print(f"[DEBUG] Dialog kapandı (edit_employee): {dialog}")
+                    if dialog in self._active_dialogs:
+                        self._active_dialogs.remove(dialog)
+                dialog.finished.connect(cleanup)
                 if dialog.exec_() == QDialog.Accepted:
                     values = dialog.get_values()
                     if values:
@@ -186,6 +148,13 @@ class Calisanlar(QWidget):
     def add_employee(self):
         """Yeni çalışan ekler"""
         dialog = EmployeeDialog(self)
+        # print(f"[DEBUG] Dialog açıldı (add_employee): {dialog}")
+        self._active_dialogs.append(dialog)
+        def cleanup():
+            # print(f"[DEBUG] Dialog kapandı (add_employee): {dialog}")
+            if dialog in self._active_dialogs:
+                self._active_dialogs.remove(dialog)
+        dialog.finished.connect(cleanup)
         if dialog.exec_() == QDialog.Accepted:
             values = dialog.get_values()
             if values:
@@ -233,12 +202,12 @@ class Calisanlar(QWidget):
         menu = QMenu(self)
         add_action = menu.addAction("Çalışan Ekle")
         add_action.triggered.connect(self.add_employee)
-        if item and item.row() > -1:  # Sadece gerçek çalışan satırlarında
+        if item:
             row = item.row()
             employee_id = self.employee_list.item(row, 0).data(Qt.UserRole)
             is_active = self.employee_list.item(row, 0).data(Qt.UserRole + 1)
             edit_action = menu.addAction("Düzenle")
-            edit_action.triggered.connect(lambda: self.edit_employee(employee_id=employee_id))
+            edit_action.triggered.connect(lambda: self.edit_employee(item))
             if is_active:
                 toggle_action = menu.addAction("Pasif Yap")
                 toggle_action.triggered.connect(lambda: self.toggle_employee_active(employee_id, False))
@@ -249,13 +218,3 @@ class Calisanlar(QWidget):
             delete_action = menu.addAction("Çalışan Sil")
             delete_action.triggered.connect(lambda: self.delete_employee_with_confirm(item, employee_id))
         menu.exec_(self.employee_list.mapToGlobal(position))
-
-if __name__ == "__main__":
-    import sys
-    from PyQt5.QtWidgets import QApplication
-    app = QApplication(sys.argv)
-    window = Calisanlar()
-    window.setWindowTitle("Çalışanlar")
-    window.resize(700, 500)
-    window.show()
-    sys.exit(app.exec_())

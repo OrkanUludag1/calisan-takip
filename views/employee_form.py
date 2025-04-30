@@ -4,12 +4,28 @@ from PyQt5.QtWidgets import (
     QHeaderView, QCheckBox, QMenu, QMessageBox,
     QPushButton, QHBoxLayout
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent
 from PyQt5.QtGui import QColor, QBrush, QFont
 import sqlite3
 
 from models.database import EmployeeDB
 from utils.helpers import format_currency
+
+class SelectAllLineEdit(QLineEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._mouse_selected = False
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.selectAll()
+        self._mouse_selected = False
+
+    def mouseReleaseEvent(self, event):
+        if not self._mouse_selected and self.hasFocus():
+            self.selectAll()
+            self._mouse_selected = True
+        super().mouseReleaseEvent(event)
 
 class EmployeeDialog(QDialog):
     """Çalışan bilgilerini düzenlemek için dialog penceresi"""
@@ -27,10 +43,10 @@ class EmployeeDialog(QDialog):
         # Form alanları
         form_layout = QFormLayout()
         
-        self.name_input = QLineEdit()
-        self.weekly_salary_input = QLineEdit()
-        self.daily_food_input = QLineEdit()
-        self.daily_transport_input = QLineEdit()
+        self.name_input = SelectAllLineEdit()
+        self.weekly_salary_input = SelectAllLineEdit()
+        self.daily_food_input = SelectAllLineEdit()
+        self.daily_transport_input = SelectAllLineEdit()
         
         form_layout.addRow("İsim:", self.name_input)
         form_layout.addRow("Haftalık Ücret:", self.weekly_salary_input)
@@ -40,9 +56,9 @@ class EmployeeDialog(QDialog):
         # Eğer çalışan varsa bilgileri doldur
         if self.employee:
             self.name_input.setText(self.employee[1])
-            self.weekly_salary_input.setText(str(self.employee[2]))
-            self.daily_food_input.setText(str(self.employee[3]))
-            self.daily_transport_input.setText(str(self.employee[4]))
+            self.weekly_salary_input.setText(format_currency(self.employee[2]))
+            self.daily_food_input.setText(format_currency(self.employee[3]))
+            self.daily_transport_input.setText(format_currency(self.employee[4]))
         
         # Butonlar
         button_layout = QHBoxLayout()
@@ -65,27 +81,30 @@ class EmployeeDialog(QDialog):
     def get_values(self):
         """Form değerlerini döndürür"""
         name = self.name_input.text().strip()
-        
-        # İsim boş ise None döndür
         if not name:
             return None
-        
-        # Sayısal değerler boş ise 0 olarak kabul et
+        # Eski değerleri al
+        old_weekly = self.employee[2] if self.employee else 0
+        old_food = self.employee[3] if self.employee else 0
+        old_transport = self.employee[4] if self.employee else 0
+        # Haftalık Ücret
+        ws_text = self.weekly_salary_input.text().replace("TL", "").replace(".", "").replace(",", "").strip()
         try:
-            weekly_salary = float(self.weekly_salary_input.text()) if self.weekly_salary_input.text().strip() else 0
+            weekly_salary = int(ws_text) if ws_text else old_weekly
         except ValueError:
-            weekly_salary = 0
-            
+            weekly_salary = old_weekly
+        # Günlük Yemek
+        food_text = self.daily_food_input.text().replace("TL", "").replace(".", "").replace(",", "").strip()
         try:
-            daily_food = float(self.daily_food_input.text()) if self.daily_food_input.text().strip() else 0
+            daily_food = int(food_text) if food_text else old_food
         except ValueError:
-            daily_food = 0
-            
+            daily_food = old_food
+        # Günlük Yol
+        transport_text = self.daily_transport_input.text().replace("TL", "").replace(".", "").replace(",", "").strip()
         try:
-            daily_transport = float(self.daily_transport_input.text()) if self.daily_transport_input.text().strip() else 0
+            daily_transport = int(transport_text) if transport_text else old_transport
         except ValueError:
-            daily_transport = 0
-        
+            daily_transport = old_transport
         return {
             'name': name,
             'weekly_salary': weekly_salary,
@@ -120,7 +139,8 @@ class EmployeeForm(QWidget):
         
         # Başlıkları gizle
         self.employee_list.verticalHeader().setVisible(False)
-        self.employee_list.horizontalHeader().setVisible(False)
+        self.employee_list.horizontalHeader().setVisible(True)
+        self.employee_list.horizontalHeader().setStyleSheet("QHeaderView::section { background-color: #153866; color: white; font-weight: bold; }")
         
         # İlk satırı başlık olarak ayarla
         self.employee_list.insertRow(0)
