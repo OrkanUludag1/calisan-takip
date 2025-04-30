@@ -4,14 +4,16 @@ import warnings
 # PyQt5 uyarılarını gizle
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QHBoxLayout, QLabel
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
 from models.database import EmployeeDB
 from views.employee_form import EmployeeForm
 from views.time_select_form import TimeSelectForm
-from views.weekly_summary_form import WeeklySummaryForm
+from views.calisanlar import Calisanlar
+from views.weekly_report_form import WeeklyReportForm
+# from views.rapor import Rapor  # KALDIRILDI
 
 class MainWindow(QMainWindow):
     """Ana pencere sınıfı"""
@@ -28,11 +30,11 @@ class MainWindow(QMainWindow):
     def initUI(self):
         """Kullanıcı arayüzünü başlatır"""
         self.setWindowTitle("Çalışan Takip Sistemi")
-        self.setGeometry(100, 100, 1300, 700)
+        self.setGeometry(100, 100, 1300, 900)
         self.setWindowIcon(QIcon("icon.png"))
         
         # Pencere boyutunu sabitle
-        self.setFixedSize(1300, 700)
+        self.setFixedSize(1300, 900)
         
         # Ana widget ve layout
         central_widget = QWidget()
@@ -46,55 +48,70 @@ class MainWindow(QMainWindow):
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                background-color: #f8f9fa;
             }
             QTabBar::tab {
-                background-color: #e9ecef;
-                color: #495057;
-                padding: 10px 20px;
+                background: #f8f9fa;
+                color: #2d3436;
+                min-width: 90px;
+                min-height: 26px;
+                margin-right: 4px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                font-size: 13px;
+                font-family: Arial, Helvetica, sans-serif;
+                font-weight: 500;
+                padding: 6px 18px;
                 border: 1px solid #bdc3c7;
                 border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
+                transition: background 0.2s, color 0.2s;
+                text-align: center;
             }
             QTabBar::tab:selected {
-                background-color: #3498db;
-                color: white;
-                border-bottom-color: #3498db;
+                background: #e3eafc;
+                color: #1a237e;
+                border-bottom: 2px solid #1a237e;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #dee2e6;
+                background: #e0e7ff;
+                color: #1a237e;
             }
         """)
-        
-        # Çalışan formu
-        self.employee_form = EmployeeForm(db=self.db)
-        self.tabs.addTab(self.employee_form, "ÇALIŞANLAR")
-        
-        # Süre seçim formu
-        self.time_select_form = TimeSelectForm(db=self.db)
+
+        # Sekmeleri oluştur
+        self.calisanlar_widget = Calisanlar(db=self.db)
+        self.tabs.addTab(self.calisanlar_widget, "KİŞİLER")
+        self.time_select_form = TimeSelectForm(self.db)
         self.tabs.addTab(self.time_select_form, "SÜRE")
-        
-        # Haftalık özet formu
-        self.weekly_summary_form = WeeklySummaryForm(db=self.db)
-        self.tabs.addTab(self.weekly_summary_form, "HAFTALIK")
-        
-        # Zaman takibi formundan gelen sinyali haftalık özet formuna bağla
-        # Bu sayede zaman değiştiğinde haftalık özet otomatik olarak güncellenecek
-        self.time_select_form.time_tracking_form.time_changed_signal.connect(self.weekly_summary_form.load_active_employees)
-        
-        # Çalışan durumu değiştiğinde diğer formları güncelle
-        self.employee_form.employee_updated.connect(self.time_select_form.load_employees)
-        self.employee_form.employee_updated.connect(self.weekly_summary_form.load_active_employees)
-        self.employee_form.employee_added.connect(self.time_select_form.load_employees)
-        self.employee_form.employee_added.connect(self.weekly_summary_form.load_active_employees)
-        self.employee_form.employee_deleted.connect(self.time_select_form.load_employees)
-        self.employee_form.employee_deleted.connect(self.weekly_summary_form.load_active_employees)
-        
+        self.weekly_report_form = WeeklyReportForm(self.db)
+        self.tabs.addTab(self.weekly_report_form, "ÖZET")
+        # Rapor sekmesi kaldırıldı
+        # self.rapor = Rapor(self.db)
+        # self.tabs.addTab(self.rapor, "Rapor")
+
         main_layout.addWidget(self.tabs)
         
+        # --- SIGNAL CONNECTIONS ARTIK SADECE BURADA ---
+        self.db.data_changed.connect(self.time_select_form.load_employees)
+
+        # --- SENKRONİZASYON ---
+        # Süre sekmesindeki TimeTrackingForm değiştiğinde haftalık raporu güncelle
+        def connect_data_changed():
+            try:
+                if self.time_select_form.current_time_form:
+                    self.time_select_form.current_time_form.data_changed.connect(self.time_select_form.load_employees)
+            except Exception:
+                pass
+        # İlk çalışan yüklendiğinde bağlantıyı kur
+        orig_load_employee = getattr(self.time_select_form, 'load_employee', None)
+        def load_employee_and_connect(*args, **kwargs):
+            result = orig_load_employee(*args, **kwargs)
+            connect_data_changed()
+            return result
+        if orig_load_employee:
+            self.time_select_form.load_employee = load_employee_and_connect
+        # Eğer ilk açılışta form varsa bağla
+        connect_data_changed()
+
         # Genel stil
         self.setStyleSheet("""
             QMainWindow, QWidget {

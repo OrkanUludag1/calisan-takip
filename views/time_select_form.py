@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QDoubleSpinBox, QTextEdit, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QFont
 from datetime import datetime
 
@@ -189,6 +189,27 @@ class PaymentListDialog(QDialog):
             else:
                 QMessageBox.critical(self, "Hata", "Kayıt silinirken bir hata oluştu!")
 
+class EmployeeLoaderWorker(QThread):
+    employees_loaded = pyqtSignal(list)
+
+    def __init__(self, db_file):
+        super().__init__()
+        self.db_file = db_file
+
+    def run(self):
+        import sqlite3
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, weekly_salary, daily_food, daily_transport, is_active
+            FROM employees
+            WHERE is_active = 1
+            ORDER BY name
+        ''')
+        employees = cursor.fetchall()
+        conn.close()
+        self.employees_loaded.emit(employees)
+
 class TimeSelectForm(QWidget):
     """Süre seçim formu"""
     
@@ -197,9 +218,11 @@ class TimeSelectForm(QWidget):
         self.db = db
         self.current_time_form = None
         self.employees = []
+        self._active_dialogs = []  # Açık dialog referanslarını tutmak için
         self.time_tracking_form = None  # Zaman takibi formuna erişim için özellik
-        
+        self.selected_week = None  # Seçili hafta (global)
         self.initUI()
+        # --- Otomatik güncelleme: DB değişince çalışan listesini güncelle ---
         self.load_employees()
     
     def initUI(self):
@@ -207,7 +230,23 @@ class TimeSelectForm(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(15)
         
-        # Ana içerik için splitter (zaman takip formu ve çalışan listesi ayarlanabilir genişlikte olacak)
+        # Hafta seçimi combobox'ı artık ortalanacak şekilde üstte
+        week_combo_layout = QHBoxLayout()
+        week_combo_layout.addStretch()
+        self.week_combo = QComboBox()
+        self.week_combo.setFixedWidth(200)
+        self.week_combo.setEditable(False)
+        self.week_combo.currentIndexChanged.connect(self.on_week_combo_changed)
+        week_combo_layout.addWidget(self.week_combo)
+        week_combo_layout.addStretch()
+        main_layout.addLayout(week_combo_layout)
+        
+        # 'Haftalık Özet' başlığı tamamen kaldırıldı
+        # summary_title = QLabel("Haftalık Özet")
+        # summary_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #4a86e8;")
+        # main_layout.addWidget(summary_title, alignment=Qt.AlignCenter)
+
+        # Ana içerik splitter
         content_splitter = QSplitter(Qt.Horizontal)
         content_splitter.setHandleWidth(0)  # Ayırıcı çizgiyi kaldır
         content_splitter.setChildrenCollapsible(False)  # Bölümlerin tamamen kapanmasını engelle
@@ -261,51 +300,137 @@ class TimeSelectForm(QWidget):
         content_splitter.setSizes([160, 800])
         
         main_layout.addWidget(content_splitter)
-    
+        
+        # Hafta combobox'unu güncelle
+        self.update_week_combo()
+
+    def update_week_combo(self):
+        """Veritabanındaki haftaları combobox'a yükler ve seçim yapar"""
+        from PyQt5.QtCore import QDate
+        self.week_combo.blockSignals(True)
+        self.week_combo.clear()
+        weeks = self.db.get_available_weeks() if hasattr(self.db, 'get_available_weeks') else []
+        weeks = sorted(set(weeks), reverse=True)
+        for w in weeks:
+            # Görsel olarak "21-27 Nisan 2025" gibi göster
+            try:
+                start_dt = QDate.fromString(w, "yyyy-MM-dd")
+                end_dt = start_dt.addDays(6)
+                label = f"{start_dt.toString('d MMMM')} - {end_dt.toString('d MMMM yyyy')}"
+                self.week_combo.addItem(label, w)
+            except Exception:
+                self.week_combo.addItem(w, w)
+        # Varsayılan seçim: Çalışılan gün hangi haftadaysa o hafta seçili gelsin
+        if not self.selected_week:
+            today = QDate.currentDate()
+            # Haftanın başlangıcı (Pazartesi)
+            days_to_monday = today.dayOfWeek() - 1
+            monday = today.addDays(-days_to_monday)
+            week_str = monday.toString("yyyy-MM-dd")
+            idx = self.week_combo.findData(week_str)
+            if idx >= 0:
+                self.week_combo.setCurrentIndex(idx)
+                self.selected_week = week_str
+            else:
+                self.week_combo.setCurrentIndex(0)
+                self.selected_week = self.week_combo.itemData(0)
+        else:
+            idx = self.week_combo.findData(self.selected_week)
+            if idx >= 0:
+                self.week_combo.setCurrentIndex(idx)
+            else:
+                self.week_combo.setCurrentIndex(0)
+                self.selected_week = self.week_combo.itemData(0)
+        self.week_combo.blockSignals(False)
+        # Seçimi güncelle (sinyali tetiklememek için doğrudan fonksiyonu çağırma)
+        self.on_week_combo_changed(self.week_combo.currentIndex())
+
+    def on_week_combo_changed(self, idx):
+        """Hafta combobox değiştiğinde çağrılır"""
+        week_str = self.week_combo.itemData(idx)
+        if week_str:
+            self.selected_week = week_str
+            # Aktif çalışan formuna haftayı bildir
+            if self.current_time_form:
+                self.current_time_form.set_week(week_str)
+
     def load_employees(self):
-        """Çalışanları yükler ve listeye ekler"""
-        self.employee_list.clear()
-        self.employees = self.db.get_active_employees()
-        
-        # Çalışanları haftalık ücrete göre sırala (en yüksekten en düşüğe)
-        sorted_employees = sorted(self.employees, key=lambda emp: emp[2], reverse=True)
-        self.employees = sorted_employees
-        
-        for employee_id, name, weekly_salary, _, _, _ in self.employees:
-            item = QListWidgetItem(name)  # Sadece ismi göster
-            item.setData(Qt.UserRole, employee_id)
-            self.employee_list.addItem(item)
-        
-        # İlk çalışanı seç ve yükle
-        if self.employees and len(self.employees) > 0:
-            self.employee_list.setCurrentRow(0)  # Bu otomatik olarak on_employee_selected'ı tetikleyecek
-        
+        try:
+            self.db.data_changed.disconnect(self.load_employees)
+        except Exception:
+            pass
+        if getattr(self, '_is_updating', False):
+            try:
+                self.db.data_changed.connect(self.load_employees)
+            except Exception:
+                pass
+            return
+        # --- SEÇİLİ ÇALIŞANI KAYDET ---
+        selected_employee_id = None
+        current_item = self.employee_list.currentItem() if hasattr(self, 'employee_list') else None
+        if current_item:
+            selected_employee_id = current_item.data(Qt.UserRole)
+        self._selected_employee_id = selected_employee_id
+        self._is_updating = True
+        try:
+            self.employee_list.clear()
+            # Worker başlat
+            self.worker = EmployeeLoaderWorker(self.db.db_file)
+            self.worker.employees_loaded.connect(self.on_employees_loaded)
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.worker.start()
+        except Exception as e:
+            pass
+        # _is_updating ve reconnect işlemleri artık on_employees_loaded içinde yapılacak
+
+    def on_employees_loaded(self, employees):
+        try:
+            # Çalışanları haftalık ücrete göre sırala (en yüksekten en düşüğe)
+            sorted_employees = sorted(employees, key=lambda emp: emp[2], reverse=True)
+            self.employees = sorted_employees
+            selected_row = 0
+            selected_employee_id = getattr(self, '_selected_employee_id', None)
+            for idx, (employee_id, name, weekly_salary, _, _, _) in enumerate(self.employees):
+                item = QListWidgetItem(name)  # Sadece ismi göster
+                item.setData(Qt.UserRole, employee_id)
+                self.employee_list.addItem(item)
+                # Eğer kaydedilen çalışan ID'siyle eşleşirse, seçilecek satırı belirle
+                if selected_employee_id is not None and employee_id == selected_employee_id:
+                    selected_row = idx
+            # Önceki seçimi koru, yoksa ilk çalışanı seç
+            if self.employees and len(self.employees) > 0:
+                self.employee_list.setCurrentRow(selected_row)  # Bu otomatik olarak on_employee_selected'ı tetikleyecek
+        finally:
+            self._is_updating = False
+            try:
+                self.db.data_changed.connect(self.load_employees)
+            except Exception:
+                pass
+    
     def on_employee_selected(self, current, previous):
         """Listeden bir çalışan seçildiğinde"""
         if not current:
             return
-            
         employee_id = current.data(Qt.UserRole)
         name = current.text()
-        
         self.load_employee(employee_id, name)
     
     def load_employee(self, employee_id, employee_name):
         """Belirli bir çalışanı yükler"""
-        # Mevcut formu temizle
+        # Eğer mevcut bir form varsa, onu silmek yerine güncelle
         if self.current_time_form:
-            self.time_form_container.removeWidget(self.current_time_form)
-            self.current_time_form.deleteLater()
-        
-        # Yeni zaman takip formunu oluştur
+            self.current_time_form.set_employee(employee_id, employee_name)
+            # Seçili haftayı bildir
+            if self.selected_week:
+                self.current_time_form.set_week(self.selected_week)
+            return  # Yeni form yaratmaya gerek yok
+
+        # Eğer hiç form yoksa (ilk açılış), yeni oluştur
         self.current_time_form = TimeTrackingForm(self.db, employee_id)
-        self.time_tracking_form = self.current_time_form  # Zaman takibi formunu ana pencereden erişilebilir yap
+        self.time_tracking_form = self.current_time_form
         self.current_time_form.set_employee(employee_id, employee_name)
-        
-        # Çalışanın aktif olup olmadığını kontrol et
-        is_active = self.current_time_form.check_employee_active()
-        
-        # Container'a ekle
+        if self.selected_week:
+            self.current_time_form.set_week(self.selected_week)
         self.time_form_container.addWidget(self.current_time_form)
     
     def show_employee_context_menu(self, position):
@@ -372,7 +497,7 @@ class TimeSelectForm(QWidget):
         if not self.current_time_form or not self.current_time_form.current_week_start:
             QMessageBox.warning(self, "Uyarı", "Lütfen önce bir haftayı seçin!")
             return
-            
+        
         week_start_date = self.current_time_form.current_week_start
         
         # Ödeme/kesinti dialog penceresini göster
@@ -383,7 +508,11 @@ class TimeSelectForm(QWidget):
             payment_type=payment_type,
             is_permanent=is_permanent
         )
-        
+        self._active_dialogs.append(dialog)
+        def cleanup():
+            if dialog in self._active_dialogs:
+                self._active_dialogs.remove(dialog)
+        dialog.finished.connect(cleanup)
         if dialog.exec_() == QDialog.Accepted:
             values = dialog.get_values()
             if values:
@@ -409,7 +538,7 @@ class TimeSelectForm(QWidget):
         if not self.current_time_form or not self.current_time_form.current_week_start:
             QMessageBox.warning(self, "Uyarı", "Lütfen önce bir hafta seçin!")
             return
-            
+        
         week_start_date = self.current_time_form.current_week_start
         
         # Ödeme listesi dialogunu göster
@@ -419,7 +548,11 @@ class TimeSelectForm(QWidget):
             employee_id=employee_id,
             week_start_date=week_start_date
         )
-        
+        self._active_dialogs.append(dialog)
+        def cleanup():
+            if dialog in self._active_dialogs:
+                self._active_dialogs.remove(dialog)
+        dialog.finished.connect(cleanup)
         if dialog.exec_() == QDialog.Accepted:
             # Formu güncelle
             if self.current_time_form:

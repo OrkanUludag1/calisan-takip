@@ -2,13 +2,14 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QTableWidget, QTableWidgetItem, QHeaderView, 
     QFrame, QSizePolicy, QPushButton, QComboBox,
-    QMessageBox
+    QMessageBox, QFileDialog
 )
-from PyQt5.QtCore import Qt, QTime
-from PyQt5.QtGui import QColor, QBrush, QFont
+from PyQt5.QtCore import Qt, QTime, QDate
+from PyQt5.QtGui import QColor, QBrush, QFont, QPainter
+from PyQt5.QtPrintSupport import QPrinter
 
 from models.database import EmployeeDB
-from utils.helpers import format_currency
+from utils.helpers import format_currency, calculate_daily_normal_and_overtime
 from datetime import datetime, timedelta
 
 class WeeklySummaryForm(QWidget):
@@ -21,14 +22,17 @@ class WeeklySummaryForm(QWidget):
         self.current_week_start = self.get_week_start_date(self.current_date)
         self.employee_data = []  # Çalışan verilerini saklamak için
         
+        self.db.data_changed.connect(self.reload_summary)
+        
         self.initUI()
         self.load_available_weeks()
         self.load_weekly_data()
+        self.load_and_calculate_employees()
     
     def initUI(self):
         """Kullanıcı arayüzünü başlatır"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
         
         # Başlık ve toplam ödenecek kısmı
         title_layout = QHBoxLayout()
@@ -49,7 +53,7 @@ class WeeklySummaryForm(QWidget):
         self.total_amount.setStyleSheet("font-size: 20px; font-weight: bold; color: #4a86e8;")
         title_layout.addWidget(self.total_amount)
         
-        main_layout.addLayout(title_layout)
+        self.main_layout.addLayout(title_layout)
         
         # Hafta seçimi ve butonlar
         controls_layout = QHBoxLayout()
@@ -62,68 +66,81 @@ class WeeklySummaryForm(QWidget):
         controls_layout.addWidget(self.week_combo)
         
         controls_layout.addStretch()
-        
-        main_layout.addLayout(controls_layout)
+
+        # PDF'ye Aktar butonu
+        self.export_pdf_btn = QPushButton("PDF'ye Aktar")
+        self.export_pdf_btn.clicked.connect(self.export_to_pdf)
+        controls_layout.addWidget(self.export_pdf_btn)
+
+        self.main_layout.addLayout(controls_layout)
         
         # Ayırıcı çizgi
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         line.setStyleSheet("background-color: #e0e0e0;")
-        main_layout.addWidget(line)
+        self.main_layout.addWidget(line)
         
         # Tablo
         self.summary_table = QTableWidget()
-        self.summary_table.setColumnCount(8)
+        self.summary_table.setColumnCount(13)
         self.summary_table.setHorizontalHeaderLabels([
-            "Çalışan", "Toplam Saat", "Haftalık Ücret", "Yemek", "Yol", 
-            "Ek Ödemeler", "Kesintiler", "Toplam"
+            "Çalışan",
+            "Haftalık Ücret",
+            "Toplam Saat",
+            "Normal Saat",
+            "Normal Ç. Ücreti",
+            "Fazla Ç. Saati",
+            "Fazla Ç. Ücreti",
+            "Yemek",
+            "Yol",
+            "Ek Ödemeler",
+            "Kesintiler",
+            "Toplam",
+            "Saatlik Ücret"
         ])
-        
-        # Tablo ayarları
+        self.summary_table.setColumnWidth(0, 200)
+        self.summary_table.setColumnWidth(1, 150)
+        self.summary_table.setColumnWidth(2, 120)
+        self.summary_table.setColumnWidth(3, 120)
+        self.summary_table.setColumnWidth(4, 120)
+        self.summary_table.setColumnWidth(5, 120)
+        self.summary_table.setColumnWidth(6, 150)
+        self.summary_table.setColumnWidth(7, 120)
+        self.summary_table.setColumnWidth(8, 120)
+        self.summary_table.setColumnWidth(9, 150)
+        self.summary_table.setColumnWidth(10, 150)
+        self.summary_table.setColumnWidth(11, 180)
+        self.summary_table.setColumnWidth(12, 150)
         self.summary_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.summary_table.setAlternatingRowColors(True)
-        self.summary_table.verticalHeader().setVisible(False)  # Satır numaralarını gizle
-        
-        # Tablo başlık renkleri
+        self.summary_table.verticalHeader().setVisible(False)
         header = self.summary_table.horizontalHeader()
         header.setStyleSheet("QHeaderView::section { background-color: #4a86e8; color: white; }")
-        
-        # Sütun genişlikleri - daha geniş ayarla
-        self.summary_table.setColumnWidth(0, 200)  # Çalışan ismi
-        self.summary_table.setColumnWidth(1, 120)  # Toplam saat
-        self.summary_table.setColumnWidth(2, 150)  # Haftalık ücret
-        self.summary_table.setColumnWidth(3, 120)  # Yemek
-        self.summary_table.setColumnWidth(4, 120)  # Yol
-        self.summary_table.setColumnWidth(5, 150)  # Ek ödemeler
-        self.summary_table.setColumnWidth(6, 150)  # Kesintiler
-        self.summary_table.setColumnWidth(7, 180)  # Toplam
-        
-        # Satır yüksekliği
-        self.summary_table.verticalHeader().setDefaultSectionSize(40)  # Satır yüksekliğini artır
-        
-        # Tablo içeriğinin tam görünmesi için kaydırma çubuklarını kaldır
+        self.summary_table.verticalHeader().setDefaultSectionSize(40)
         self.summary_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.summary_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        
-        main_layout.addWidget(self.summary_table, 1, Qt.AlignCenter)  # Ağırlık faktörünü 1 olarak ayarla
+        self.main_layout.addWidget(self.summary_table)
         
         # Alt kısımda boşluk bırak
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        main_layout.addWidget(spacer)
+        self.main_layout.addWidget(spacer)
     
     def get_week_start_date(self, date):
-        """Verilen tarihin haftasının başlangıç tarihini (Pazartesi) döndürür"""
-        # Haftanın gününü bul (0: Pazartesi, 6: Pazar)
+        """Verilen tarihin ait olduğu haftanın Pazartesi gününü döndürür (saat bilgisi olmadan)."""
+        if isinstance(date, str):
+            # Tarih string ise önce datetime nesnesine çevir
+            from datetime import datetime as dt
+            try:
+                date = dt.strptime(date, "%Y-%m-%d")
+            except Exception:
+                pass
         weekday = date.weekday()
-        
-        # Pazartesi gününe git
         monday = date - timedelta(days=weekday)
-        
-        # Sadece tarih kısmını al (saat bilgisi olmadan)
+        # Sadece tarih kısmı, saat sıfırlanır
         return monday.replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
     def format_week_date_range(self, start_date):
         """Hafta tarih aralığını formatlı olarak döndürür"""
         end_date = start_date + timedelta(days=6)
@@ -145,55 +162,58 @@ class WeeklySummaryForm(QWidget):
             return f"{start_date.day} {start_month} - {end_date.day} {end_month} {start_date.year}"
     
     def format_date_for_db(self, date):
-        """Tarihi veritabanı için formatlı olarak döndürür (YYYY-MM-DD)"""
-        return date.strftime('%Y-%m-%d')
+        """Veritabanı için tarihi YYYY-MM-DD formatına çevirir ve haftanın Pazartesi'sini döndürür."""
+        week_start = self.get_week_start_date(date)
+        return week_start.strftime("%Y-%m-%d")
     
     def parse_date_from_db(self, date_str):
         """Veritabanından gelen tarih stringini datetime nesnesine çevirir"""
         return datetime.strptime(date_str, '%Y-%m-%d')
     
     def load_available_weeks(self):
-        """Veritabanında kayıtlı haftalık özetleri yükler"""
-        # Mevcut seçimi hatırla
-        current_text = self.week_combo.currentText()
-        
-        # Combobox'ı temizle
+        """Veritabanındaki haftaları combobox'a yükler ve seçim yapar (TimeSelectForm ile uyumlu)"""
+        from PyQt5.QtCore import QDate
+        current_data = self.week_combo.currentData()
+        self.week_combo.blockSignals(True)
         self.week_combo.clear()
-        
-        # Kaydedilmiş haftalık özetleri al
-        saved_summaries = self.db.get_available_weekly_summaries()
-        
-        # Sadece kaydedilmiş haftaları ekle
-        weeks = []
-        
-        # Kaydedilmiş haftaları ekle
-        for summary in saved_summaries:
-            week_start = self.parse_date_from_db(summary['week_start_date'])
-            week_str = self.format_week_date_range(week_start)
-            weeks.append((week_str, week_start))
-        
-        # Eğer hiç kayıtlı hafta yoksa, mevcut haftayı ekle
-        if not weeks:
-            current_week = self.get_week_start_date(datetime.now())
-            week_str = self.format_week_date_range(current_week)
-            weeks.append((week_str, current_week))
-        
-        # Haftaları tarihe göre sırala (en yeni en üstte)
-        weeks.sort(key=lambda x: x[1], reverse=True)
-        
-        # Combobox'a ekle
-        for week_str, week_date in weeks:
-            self.week_combo.addItem(week_str, self.format_date_for_db(week_date))
-        
-        # Eğer önceki seçim varsa, onu tekrar seç
-        if current_text:
-            index = self.week_combo.findText(current_text)
-            if index >= 0:
-                self.week_combo.setCurrentIndex(index)
-            else:
-                self.week_combo.setCurrentIndex(0)  # İlk öğeyi seç
+        # Haftaları veritabanından çek
+        if hasattr(self.db, 'get_available_weeks'):
+            weeks = self.db.get_available_weeks()
+            # Sadece o haftada aktif çalışanlardan en az birinin çalışma kaydı varsa göster
+            filtered_weeks = []
+            for w in weeks:
+                aktif_var = False
+                employees = self.db.get_active_employees()
+                for emp in employees:
+                    employee_id = emp['id'] if isinstance(emp, dict) else emp[0]
+                    week_records = self.db.get_week_work_hours(employee_id, w)
+                    if week_records and any([rec.get('day_active', 1) for rec in week_records]):
+                        aktif_var = True
+                        break
+                if aktif_var:
+                    filtered_weeks.append(w)
+            weeks = filtered_weeks
         else:
-            self.week_combo.setCurrentIndex(0)  # İlk öğeyi seç
+            # Eski sistemle uyumluluk için haftalık özetlerden çek
+            saved_summaries = self.db.get_available_weekly_summaries()
+            weeks = [s['week_start_date'] for s in saved_summaries]
+        weeks = sorted(set(weeks), reverse=True)
+        for w in weeks:
+            try:
+                start_dt = QDate.fromString(w, "yyyy-MM-dd")
+                end_dt = start_dt.addDays(6)
+                label = f"{start_dt.toString('d MMMM')} - {end_dt.toString('d MMMM yyyy')}"
+                self.week_combo.addItem(label, w)
+            except Exception:
+                self.week_combo.addItem(w, w)
+        # Önceki seçimi tekrar ayarla
+        idx = self.week_combo.findData(current_data) if current_data else 0
+        if idx is None or idx < 0:
+            idx = 0
+        self.week_combo.setCurrentIndex(idx)
+        self.week_combo.blockSignals(False)
+        # Seçimi güncelle
+        self.on_week_changed(self.week_combo.currentIndex())
     
     def on_week_changed(self, index):
         """Hafta seçimi değiştiğinde çağrılır"""
@@ -210,89 +230,6 @@ class WeeklySummaryForm(QWidget):
         # Verileri yükle
         self.load_weekly_data()
     
-    def load_weekly_data(self):
-        """Seçilen hafta için verileri yükler"""
-        # Veritabanı formatında hafta başlangıç tarihi
-        week_start_db = self.format_date_for_db(self.current_week_start)
-        
-        # Önce veritabanında kayıtlı özet var mı kontrol et
-        saved_summary = self.db.get_weekly_summary(week_start_db)
-        
-        if saved_summary:
-            # Kaydedilmiş özeti yükle
-            self.load_saved_summary(saved_summary)
-        else:
-            # Aktif çalışanları yükle ve hesapla
-            self.load_and_calculate_employees()
-    
-    def load_saved_summary(self, summary):
-        """Kaydedilmiş haftalık özeti yükler"""
-        # Tabloyu temizle
-        self.summary_table.setRowCount(0)
-        
-        # Çalışan verilerini temizle
-        self.employee_data = []
-        
-        # Toplam tutarı güncelle
-        self.total_amount.setText(format_currency(summary['total_amount']))
-        
-        # Çalışan detaylarını tabloya ekle
-        for employee in summary['details']:
-            # Çalışan verilerini sakla
-            self.employee_data.append(employee)
-            
-            # Tabloya ekle
-            row = self.summary_table.rowCount()
-            self.summary_table.insertRow(row)
-            
-            # Çalışan adı
-            self.summary_table.setItem(row, 0, QTableWidgetItem(employee['name']))
-            
-            # Toplam saat
-            hours_item = QTableWidgetItem(f"{employee['total_hours']:.1f} saat")
-            hours_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 1, hours_item)
-            
-            # Haftalık ücret
-            salary_item = QTableWidgetItem(format_currency(employee['weekly_salary']))
-            salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 2, salary_item)
-            
-            # Yemek
-            food_item = QTableWidgetItem(format_currency(employee['food_allowance']))
-            food_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 3, food_item)
-            
-            # Yol
-            transport_item = QTableWidgetItem(format_currency(employee['transport_allowance']))
-            transport_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 4, transport_item)
-            
-            # Ek ödemeler
-            additions_item = QTableWidgetItem(format_currency(employee['total_additions']))
-            additions_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 5, additions_item)
-            
-            # Kesintiler
-            deductions_item = QTableWidgetItem(format_currency(employee['total_deductions']))
-            deductions_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 6, deductions_item)
-            
-            # Toplam
-            total_item = QTableWidgetItem(format_currency(employee['total_weekly_salary']))
-            total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            # Toplam sütununu vurgula
-            total_item.setBackground(QBrush(QColor("#e8f0fe")))
-            total_item.setForeground(QBrush(QColor("#4a86e8")))
-            font = QFont()
-            font.setBold(True)
-            font.setPointSize(10)  # Yazı tipi boyutunu artır
-            total_item.setFont(font)
-            self.summary_table.setItem(row, 7, total_item)
-        
-        # Tablo boyutunu ayarla
-        self.adjust_table_size()
-    
     def load_active_employees(self):
         """Aktif çalışanları yükler"""
         active_employees = []
@@ -308,214 +245,192 @@ class WeeklySummaryForm(QWidget):
         return active_employees
         
     def load_and_calculate_employees(self):
-        """Aktif çalışanları yükler ve tabloya ekler"""
-        # Aktif çalışanları getir
-        employees = self.db.get_employees()
-        
-        # Çalışanları ve haftalık ücretlerini tutacak liste
+        """O haftada veri girişi olan çalışanları yükler ve tabloya ekler (her bir çalışanın haftalık ayrıntılı özeti)"""
+        print("[DEBUG] load_and_calculate_employees fonksiyonu çağrıldı")
+        try:
+            with open('debug_log.txt', 'a', encoding='utf-8') as f:
+                f.write("[DEBUG] load_and_calculate_employees fonksiyonu çağrıldı\n")
+        except Exception:
+            pass
+        # Hangi haftanın sorgulandığını debug için yazdır
+        week_start_str = self.format_date_for_db(self.current_week_start)
+        print(f"[DEBUG] Haftalık özet için sorgulanan hafta başlangıcı: {week_start_str}")
         self.employee_data = []
-        
-        # Toplam değer
         total_weekly_sum = 0
-        
-        # Tablo satır sayısını sıfırla
+        self.summary_table.clearContents()
         self.summary_table.setRowCount(0)
-        
-        # Her çalışan için haftalık verileri hesapla
+        self.summary_table.setColumnCount(13)
+        self.summary_table.setHorizontalHeaderLabels([
+            "Çalışan",
+            "Haftalık Ücret",
+            "Toplam Saat",
+            "Normal Saat",
+            "Normal Ç. Ücreti",
+            "Fazla Ç. Saati",
+            "Fazla Ç. Ücreti",
+            "Yemek",
+            "Yol",
+            "Ek Ödemeler",
+            "Kesintiler",
+            "Toplam",
+            "Saatlik Ücret"
+        ])
+        employees = self.db.get_employees_with_entries_for_week(week_start_str)
+        print(f"[DEBUG] Haftada veri girişi olan çalışanlar: {employees}")
+        row = 0
+        def float_to_time_str(hours):
+            # Saat:dakika formatı
+            h = int(hours)
+            m = int(round((hours - h) * 60))
+            if m == 60:
+                h += 1
+                m = 0
+            return f"{h:02d}:{m:02d}"
         for emp in employees:
-            if not emp['is_active']:
-                continue
-                
+            print(f"[DEBUG] Çalışan: {emp['name']}")
+            try:
+                with open('debug_log.txt', 'a', encoding='utf-8') as f:
+                    f.write(f"[DEBUG] Çalışan: {emp['name']}\n")
+            except Exception:
+                pass
             employee_id = emp['id']
             employee_name = emp['name']
-            # Saatlik ücret (veritabanında saklanan değer)
-            hourly_rate = emp['weekly_salary']
-            
-            # Haftalık çalışma saatlerini al - string formatında tarih gönder
-            week_start_db = self.format_date_for_db(self.current_week_start)
-            work_hours = self.db.get_week_work_hours(employee_id, week_start_db)
-            
-            # Toplam çalışma saati
+            week_records = self.db.get_week_work_hours(employee_id, week_start_str)
+            if not week_records:
+                continue
             total_hours = 0
+            normal_hours = 0
+            overtime_hours = 0
             active_days = 0
-            
-            # Her gün için çalışma saatlerini hesapla
-            for day_data in work_hours:
-                # Gün aktif mi kontrol et
-                if not day_data['day_active']:
-                    continue
-                
-                # Aktif gün sayısını artır
-                active_days += 1
-                
-                # Zaman değerlerini al
-                entry_time = day_data['entry_time']
-                lunch_start = day_data['lunch_start']
-                lunch_end = day_data['lunch_end']
-                exit_time = day_data['exit_time']
-                
-                # Zaman değerleri boş olabilir, kontrol et
-                if not entry_time or not lunch_start or not lunch_end or not exit_time:
-                    continue
-                
-                # String formatındaki saatleri datetime.time nesnesine çevir
-                try:
-                    entry_time = datetime.strptime(entry_time, "%H:%M").time()
-                    lunch_start = datetime.strptime(lunch_start, "%H:%M").time()
-                    lunch_end = datetime.strptime(lunch_end, "%H:%M").time()
-                    exit_time = datetime.strptime(exit_time, "%H:%M").time()
-                except ValueError:
-                    continue
-                
-                # Sabah çalışma saatleri (saat cinsinden)
-                morning_hours = 0
-                if entry_time <= lunch_start:  # Normal durum
-                    morning_seconds = (lunch_start.hour * 3600 + lunch_start.minute * 60) - (entry_time.hour * 3600 + entry_time.minute * 60)
-                    morning_hours = morning_seconds / 3600.0
-                
-                # Öğleden sonra çalışma saatleri (saat cinsinden)
-                afternoon_hours = 0
-                if lunch_end <= exit_time:  # Normal durum
-                    afternoon_seconds = (exit_time.hour * 3600 + exit_time.minute * 60) - (lunch_end.hour * 3600 + lunch_end.minute * 60)
-                    afternoon_hours = afternoon_seconds / 3600.0
-                
-                # Toplam çalışma saatleri (saat cinsinden)
-                day_hours = morning_hours + afternoon_hours
-                
-                # Negatif değerleri düzelt (zaman çakışmaları veya hatalı giriş)
-                if day_hours < 0:
-                    day_hours = 0
-                
-                # Toplam saatlere ekle
-                total_hours += day_hours
-            
-            # Toplam saati saat ve dakika olarak ayır
-            total_hours_int = int(total_hours)  # Tam saat kısmı
-            total_minutes = int((total_hours - total_hours_int) * 60)  # Dakika kısmı
-            
-            # Haftalık kazanç = toplam çalışma saati * saatlik ücret
-            weekly_salary_earned = total_hours * hourly_rate
-            
-            # Yol ve yemek ödemeleri (aktif gün sayısına göre)
-            food_allowance = active_days * emp['daily_food']  # Günlük yemek ücreti
-            transport_allowance = active_days * emp['daily_transport']  # Günlük yol ücreti
-            
-            # Ek ödemeler ve kesintileri al
-            payments = self.db.get_weekly_payments(employee_id, week_start_db)
-            
-            # Ek ödemeler ve kesintileri hesapla
-            total_additions = 0
+            food_days = 0
+            for rec in week_records:
+                if rec.get('day_active', 1):
+                    giris = rec['entry_time']
+                    cikis = rec['exit_time']
+                    ogle_bas = rec.get('lunch_start')
+                    ogle_bit = rec.get('lunch_end')
+                    current_day = rec.get('date')
+                    if giris and cikis and ogle_bas and ogle_bit:
+                        try:
+                            from PyQt5.QtCore import QTime, QDate
+                            t1 = QTime.fromString(giris, "HH:mm")
+                            t2 = QTime.fromString(ogle_bas, "HH:mm")
+                            t3 = QTime.fromString(ogle_bit, "HH:mm")
+                            t4 = QTime.fromString(cikis, "HH:mm")
+                            qdate = QDate.fromString(current_day, "yyyy-MM-dd") if isinstance(current_day, str) else current_day
+                            from utils.helpers import calculate_daily_normal_and_overtime
+                            norm, over = calculate_daily_normal_and_overtime(t1, t2, t3, t4, qdate)
+                            # Konsola yazmanın yanında dosyaya da logla
+                            try:
+                                with open('debug_log.txt', 'a', encoding='utf-8') as f:
+                                    f.write(f"[DEBUG] GÜN: {current_day} | GİRİŞ: {giris} | ÇIKIŞ: {cikis} | NORM: {norm} | OVER: {over}\n")
+                            except Exception as e:
+                                pass
+                            print(f"[DEBUG] GÜN: {current_day} | GİRİŞ: {giris} | ÇIKIŞ: {cikis} | NORM: {norm} | OVER: {over}")
+                            normal_hours += norm
+                            overtime_hours += over
+                            total_hours += norm + over
+                            active_days += 1
+                            if (norm + over) >= 5:
+                                food_days += 1
+                        except Exception:
+                            pass
+            weekly_salary_base = emp['weekly_salary']
+            hourly_rate = weekly_salary_base / 50
+            normal_pay = normal_hours * hourly_rate
+            overtime_pay = overtime_hours * hourly_rate * 1.5
+            weekly_salary_earned = normal_pay + overtime_pay
+            food_allowance = food_days * emp['daily_food']
+            transport_allowance = active_days * emp['daily_transport']
+            calisma_var = (normal_hours + overtime_hours) > 0
+            total_additions = self.db.get_employee_additions(employee_id, week_start_str, include_permanent_if_no_work=calisma_var)
+            payments = self.db.get_weekly_payments(employee_id, week_start_str)
             total_deductions = 0
-            
-            for payment_id, payment_type, amount, description, is_permanent in payments:
-                # Ödeme tipini küçük harfe çevir
-                payment_type_lower = payment_type.lower() if payment_type else ""
-                
-                # Eklenti olarak kabul edilen tipler
-                if payment_type_lower in ["eklenti", "bonus", "prim", "ek ödeme", "ek odeme", "ikramiye"]:
-                    total_additions += amount
-                # Kesinti olarak kabul edilen tipler
-                elif payment_type_lower in ["kesinti", "ceza", "borç", "borc", "avans", "deduction"]:
-                    total_deductions += amount
-            
-            # Toplam haftalık ücret
+            for payment in payments:
+                payment_type_lower = payment[1].lower() if payment[1] else ""
+                if payment_type_lower in ["kesinti", "ceza", "borç", "borc", "avans", "deduction"]:
+                    total_deductions += payment[2]
             total_weekly_salary = weekly_salary_earned + food_allowance + transport_allowance + total_additions - total_deductions
-            
-            # Toplama ekle
-            total_weekly_sum += total_weekly_salary
-            
-            # Çalışan verilerini listeye ekle
             self.employee_data.append({
                 'id': employee_id,
                 'name': employee_name,
                 'total_hours': total_hours,
-                'total_hours_formatted': f"{total_hours_int}:{total_minutes:02d}",
-                'weekly_salary': weekly_salary_earned,  
+                'normal_hours': normal_hours,
+                'overtime_hours': overtime_hours,
+                'normal_pay': normal_pay,
+                'overtime_pay': overtime_pay,
+                'weekly_salary': weekly_salary_earned,
                 'food_allowance': food_allowance,
                 'transport_allowance': transport_allowance,
                 'total_additions': total_additions,
                 'total_deductions': total_deductions,
-                'total_weekly_salary': total_weekly_salary
+                'total_weekly_salary': total_weekly_salary,
+                'weekly_salary_base': weekly_salary_base,
+                'hourly_rate': hourly_rate
             })
-        
-        # Çalışanları haftalık ücretlerine göre azalan sırada sırala
-        self.employee_data.sort(key=lambda x: x['total_weekly_salary'], reverse=True)
-        
-        # Tabloya ekle
-        self.summary_table.setRowCount(len(self.employee_data))
-        
-        # Her çalışan için satır ekle
-        for row, employee in enumerate(self.employee_data):
-            # Çalışan ismi
-            name_item = QTableWidgetItem(employee['name'])
-            self.summary_table.setItem(row, 0, name_item)
-            
-            # Toplam saat
-            hours_item = QTableWidgetItem(employee['total_hours_formatted'])
-            hours_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 1, hours_item)
-            
-            # Haftalık ücret
-            salary_item = QTableWidgetItem(format_currency(employee['weekly_salary']))
-            salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 2, salary_item)
-            
-            # Yemek
-            food_item = QTableWidgetItem(format_currency(employee['food_allowance']))
+            self.summary_table.insertRow(row)
+            self.summary_table.setItem(row, 0, QTableWidgetItem(employee_name))
+            haftalik_ucret_item = QTableWidgetItem(format_currency(weekly_salary_base))
+            haftalik_ucret_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.summary_table.setItem(row, 1, haftalik_ucret_item)
+            toplam_saat_item = QTableWidgetItem(float_to_time_str(total_hours))
+            toplam_saat_item.setTextAlignment(Qt.AlignCenter)
+            self.summary_table.setItem(row, 2, toplam_saat_item)
+            normal_saat_item = QTableWidgetItem(float_to_time_str(normal_hours))
+            normal_saat_item.setTextAlignment(Qt.AlignCenter)
+            self.summary_table.setItem(row, 3, normal_saat_item)
+            normal_ucret_item = QTableWidgetItem(format_currency(normal_pay))
+            normal_ucret_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.summary_table.setItem(row, 4, normal_ucret_item)
+            fazla_saat_item = QTableWidgetItem(float_to_time_str(overtime_hours))
+            fazla_saat_item.setTextAlignment(Qt.AlignCenter)
+            self.summary_table.setItem(row, 5, fazla_saat_item)
+            fazla_ucret_item = QTableWidgetItem(format_currency(overtime_pay))
+            fazla_ucret_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.summary_table.setItem(row, 6, fazla_ucret_item)
+            food_item = QTableWidgetItem(format_currency(food_allowance))
             food_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 3, food_item)
-            
-            # Yol
-            transport_item = QTableWidgetItem(format_currency(employee['transport_allowance']))
+            self.summary_table.setItem(row, 7, food_item)
+            transport_item = QTableWidgetItem(format_currency(transport_allowance))
             transport_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 4, transport_item)
-            
-            # Ek ödemeler
-            additions_item = QTableWidgetItem(format_currency(employee['total_additions']))
+            self.summary_table.setItem(row, 8, transport_item)
+            additions_item = QTableWidgetItem(format_currency(total_additions))
             additions_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 5, additions_item)
-            
-            # Kesintiler
-            deductions_item = QTableWidgetItem(format_currency(employee['total_deductions']))
+            self.summary_table.setItem(row, 9, additions_item)
+            deductions_item = QTableWidgetItem(format_currency(total_deductions))
             deductions_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 6, deductions_item)
-            
-            # Toplam
-            total_item = QTableWidgetItem(format_currency(employee['total_weekly_salary']))
+            self.summary_table.setItem(row, 10, deductions_item)
+            rounded_total_weekly_salary = round(total_weekly_salary / 10) * 10
+            total_item = QTableWidgetItem(format_currency(rounded_total_weekly_salary))
             total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            # Toplam sütununu vurgula
             total_item.setBackground(QBrush(QColor("#e8f0fe")))
             total_item.setForeground(QBrush(QColor("#4a86e8")))
             font = QFont()
             font.setBold(True)
-            font.setPointSize(10)  # Yazı tipi boyutunu artır
+            font.setPointSize(10)
             total_item.setFont(font)
-            self.summary_table.setItem(row, 7, total_item)
-        
-        # Toplam etiketi güncelle
-        self.total_amount.setText(format_currency(total_weekly_sum))
-        
-        # Tablo boyutunu ayarla
+            self.summary_table.setItem(row, 11, total_item)
+            saatlik_ucret_item = QTableWidgetItem(format_currency(hourly_rate))
+            saatlik_ucret_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.summary_table.setItem(row, 12, saatlik_ucret_item)
+            total_weekly_sum += rounded_total_weekly_salary
+            row += 1
+        rounded_total_weekly_sum = round(total_weekly_sum / 10) * 10
+        self.total_amount.setText(format_currency(rounded_total_weekly_sum))
         self.adjust_table_size()
-        self.save_weekly_summary()  # Otomatik kaydetme
+        return
+    
+    def load_weekly_data(self):
+        """Haftalık verileri yükler"""
+        self.load_and_calculate_employees()
     
     def save_weekly_summary(self):
-        """Haftalık özeti veritabanına kaydeder"""
-        if not self.employee_data:
-            return
-        
-        # Toplam tutarı hesapla
-        total_amount = sum(employee['total_weekly_salary'] for employee in self.employee_data)
-        
-        # Veritabanı formatında hafta başlangıç tarihi
-        week_start_db = self.format_date_for_db(self.current_week_start)
-        
-        # Veritabanına kaydet
-        summary_id = self.db.save_weekly_summary(week_start_db, total_amount, self.employee_data)
-        
-        # Hafta listesini güncelle
-        if summary_id:
-            self.load_available_weeks()
+        """Haftalık özeti veritabanına kaydeder (isteğe bağlı, otomatik kaydetme kaldırıldı)"""
+        pass  # Artık özet kaydı tutulmuyor, sadece canlı gösterim var
+    
+    def load_saved_summary(self, summary):
+        """Kaydedilmiş haftalık özeti yükler (artık kullanılmıyor)"""
+        pass
     
     def adjust_table_size(self):
         """Tablo boyutunu içeriğe göre ayarla"""
@@ -555,3 +470,24 @@ class WeeklySummaryForm(QWidget):
         # Tüm hücrelerin içeriğinin tam görünmesini sağla
         for row in range(self.summary_table.rowCount()):
             self.summary_table.setRowHeight(row, 40)  # Sabit satır yüksekliği
+
+    def reload_summary(self):
+        self.load_available_weeks()
+        self.load_weekly_data()
+        self.load_and_calculate_employees()
+
+    def export_to_pdf(self):
+        from PyQt5.QtPrintSupport import QPrinter
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        from PyQt5.QtGui import QPainter
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setOutputFormat(QPrinter.PdfFormat)
+        file_path, _ = QFileDialog.getSaveFileName(self, "PDF olarak kaydet", "Haftalik_Ozet.pdf", "PDF Dosyası (*.pdf)")
+        if not file_path:
+            return
+        printer.setOutputFileName(file_path)
+        painter = QPainter(printer)
+        # Tabloyu çizdir
+        self.summary_table.render(painter)
+        painter.end()
+        QMessageBox.information(self, "Başarılı", f"PDF olarak kaydedildi:\n{file_path}")

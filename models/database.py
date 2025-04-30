@@ -1,12 +1,14 @@
 import sqlite3
 import os
 from datetime import datetime, timedelta
+from PyQt5.QtCore import QObject, pyqtSignal
 
-class EmployeeDB:
+class EmployeeDB(QObject):
     """Çalışan veritabanı işlemleri için sınıf"""
+    data_changed = pyqtSignal()
     
     def __init__(self, db_file="employee.db"):
-        """Veritabanı bağlantısını başlatır"""
+        super().__init__()
         # Tam yolu kullanarak veritabanı dosyasına erişim
         import os
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -156,7 +158,6 @@ class EmployeeDB:
     def add_employee(self, name, weekly_salary, daily_food, daily_transport):
         """Yeni çalışan ekler"""
         cursor = self.conn.cursor()
-        
         # İsmi büyük harfe çevir
         name = name.strip().upper()
         
@@ -182,6 +183,7 @@ class EmployeeDB:
         self.conn.commit()
         last_id = cursor.lastrowid
         
+        self.data_changed.emit()
         return last_id
     
     def update_employee(self, employee_id, name, weekly_salary, daily_food, daily_transport):
@@ -201,6 +203,7 @@ class EmployeeDB:
         ''', (name, hourly_rate, daily_food, daily_transport, employee_id))
         
         self.conn.commit()
+        self.data_changed.emit()
         return True
     
     def update_employee_status(self, employee_id, is_active):
@@ -257,6 +260,7 @@ class EmployeeDB:
         ''', (employee_id,))
         
         self.conn.commit()
+        self.data_changed.emit()
     
     def save_work_hours(self, employee_id, date, entry_time, lunch_start, lunch_end, exit_time, is_active=1, day_active=None):
         """Çalışma saatlerini kaydeder"""
@@ -422,7 +426,6 @@ class EmployeeDB:
         ''', (1 if active_status else 0, work_hour_id))
         
         self.conn.commit()
-        
         return cursor.rowcount > 0
 
     def toggle_employee_active(self, employee_id, active_status):
@@ -434,6 +437,7 @@ class EmployeeDB:
                 (1 if active_status else 0, employee_id)
             )
             self.conn.commit()
+            self.data_changed.emit()
             return True
         except Exception as e:
             return False
@@ -485,6 +489,7 @@ class EmployeeDB:
                               (uppercase_name, employee_id))
         
         self.conn.commit()
+        self.data_changed.emit()
         return len(employees)
 
     def get_active_employees(self):
@@ -753,3 +758,89 @@ class EmployeeDB:
         
         except Exception as e:
             return []
+
+    def get_employee_additions(self, employee_id, week_start_date, include_permanent_if_no_work=True):
+        """
+        Belirtilen çalışanın, verilen haftadaki toplam eklenti (bonus, prim, ek ödeme, sabit ek ödeme) tutarını getirir.
+        Eğer include_permanent_if_no_work False ise ve o haftada hiç çalışmamışsa sabit ek ödeme eklenmez.
+        week_start_date: datetime veya 'YYYY-MM-DD' string (hafta başı pazartesi)
+        """
+        import datetime
+        if isinstance(week_start_date, datetime.date):
+            week_start_str = week_start_date.strftime('%Y-%m-%d')
+        else:
+            week_start_str = str(week_start_date)
+
+        # Haftanın son günü (pazar)
+        week_end = (datetime.datetime.strptime(week_start_str, '%Y-%m-%d') + datetime.timedelta(days=6)).strftime('%Y-%m-%d')
+
+        cursor = self.conn.cursor()
+        # Haftaya özel ödemeleri al
+        cursor.execute('''
+            SELECT id, amount FROM payments
+            WHERE employee_id = ?
+            AND LOWER(payment_type) IN ("eklenti", "bonus", "prim", "ek ödeme", "ek odeme", "ikramiye", "permanent", "sabit ek ödeme", "sabit ek odeme")
+            AND week_start_date >= ? AND week_start_date <= ?
+        ''', (employee_id, week_start_str, week_end))
+        week_rows = cursor.fetchall()
+        week_ids = {row[0] for row in week_rows}
+        week_sum = sum(row[1] for row in week_rows)
+
+        # Sabit ek ödemeleri (is_permanent=1) al, sadece bu haftada olmayanları ekle
+        cursor.execute('''
+            SELECT id, amount FROM payments
+            WHERE employee_id = ? AND is_permanent = 1
+        ''', (employee_id,))
+        perm_rows = cursor.fetchall()
+        # Çalışma kontrolü
+        if not include_permanent_if_no_work:
+            # O haftada çalışma var mı kontrol et
+            cursor.execute('''
+                SELECT COUNT(*) FROM work_hours
+                WHERE employee_id = ? AND date >= ? AND date <= ? AND (is_active = 1 OR day_active = 1)
+            ''', (employee_id, week_start_str, week_end))
+            work_count = cursor.fetchone()[0]
+            if work_count == 0:
+                perm_sum = 0
+            else:
+                perm_sum = sum(row[1] for row in perm_rows if row[0] not in week_ids)
+        else:
+            perm_sum = sum(row[1] for row in perm_rows if row[0] not in week_ids)
+        return week_sum + perm_sum
+
+    def get_available_weeks(self):
+        """Tüm kaydedilmiş haftaların başlangıç tarihlerini (Pazartesi) döndürür"""
+        cursor = self.conn.cursor()
+        # Çalışma saatleri tablosundan benzersiz hafta başı tarihlerini çek
+        cursor.execute('''
+            SELECT DISTINCT date FROM work_hours
+        ''')
+        dates = [row[0] for row in cursor.fetchall()]
+        # Her tarihi haftanın Pazartesi'sine yuvarla
+        mondays = set()
+        for d in dates:
+            dt = datetime.strptime(d, '%Y-%m-%d')
+            monday = dt - timedelta(days=dt.weekday())
+            mondays.add(monday.strftime('%Y-%m-%d'))
+        return sorted(mondays, reverse=True)
+
+    def get_employees_with_entries_for_week(self, week_start_date):
+        """
+        Belirli bir haftada zaman/veri girişi olan tüm çalışanları (aktif/pasif fark etmeksizin) getirir.
+        Args:
+            week_start_date (str): Hafta başlangıç tarihi (YYYY-MM-DD formatında)
+        Returns:
+            list: Çalışan dict'leri
+        """
+        cursor = self.conn.cursor()
+        from datetime import datetime, timedelta
+        week_start = datetime.strptime(week_start_date, "%Y-%m-%d")
+        week_end = week_start + timedelta(days=6)
+        cursor.execute('''
+            SELECT DISTINCT e.id, e.name, e.weekly_salary, e.daily_food, e.daily_transport, e.is_active
+            FROM employees e
+            INNER JOIN work_hours w ON e.id = w.employee_id
+            WHERE w.date BETWEEN ? AND ?
+        ''', (week_start_date, week_end.strftime("%Y-%m-%d")))
+        results = cursor.fetchall()
+        return [{'id': row[0], 'name': row[1], 'weekly_salary': row[2], 'daily_food': row[3], 'daily_transport': row[4], 'is_active': row[5]} for row in results]
